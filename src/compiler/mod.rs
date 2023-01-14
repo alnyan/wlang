@@ -9,7 +9,7 @@ pub use pass0::{pass0_program, Pass0Program};
 pub use pass1::{pass1_program, Pass1Program};
 pub use emit::compile_module;
 
-use crate::parser::Node;
+use crate::{parser::Node, lexer::token::Token};
 
 #[derive(Debug, Clone)]
 pub enum CompilerError {
@@ -39,6 +39,12 @@ pub struct FunctionSignature {
 }
 
 #[derive(Debug)]
+pub struct LangFunction {
+    pub signature: FunctionSignature,
+    // pub body: Rc<TaggedNode>
+}
+
+#[derive(Debug)]
 pub struct GlobalValue {
     pub ty: Rc<LangType>,
     pub is_const: bool
@@ -48,6 +54,23 @@ pub struct GlobalValue {
 pub struct LocalValue {
     pub ty: Rc<LangType>,
     pub is_mutable: bool
+}
+
+#[derive(Debug, Clone)]
+pub enum TaggedNodeValue {
+    Binary {
+        op: Token,
+        lhs: Rc<TaggedNode>,
+        rhs: Rc<TaggedNode>
+    },
+    Ident(String)
+}
+
+#[derive(Debug, Clone)]
+pub struct TaggedNode {
+    pub ty: Rc<LangType>,
+    pub ast_node: Rc<Node>,
+    pub value: TaggedNodeValue
 }
 
 impl LangType {
