@@ -5,7 +5,7 @@ use crate::lexer::token::{BasicOperator, Keyword, Punctuation, Token};
 use super::{
     combinator::{parse_delimited, parse_many0},
     expr::{parse_expr, parse_statement_expr},
-    Function, Node, ParserError,
+    Function, GlobalDefinition, Node, ParserError,
 };
 
 def_parser!(pub maybe_call<S>(input: &mut S, left: Rc<Node>) -> Rc<Node> {
@@ -77,6 +77,22 @@ def_parser!(pub parse_fn<S>(input: &mut S) -> Rc<Node> {
     })))
 });
 
+def_parser!(pub parse_global_definition<S>(input: &mut S, is_const: bool) -> Rc<Node> {
+    expect!(input, Token::Ident(name));
+    expect!(input, Token::BasicOperator(BasicOperator::Colon));
+    let ty = parse_type(input)?;
+    expect!(input, Token::BasicOperator(BasicOperator::Assign));
+    let value = parse_expr(input)?;
+    expect!(input, Token::Punctuation(Punctuation::Semicolon));
+
+    Ok(Rc::new(Node::GlobalDefinition(GlobalDefinition {
+        is_const,
+        name,
+        ty,
+        value
+    })))
+});
+
 def_parser!(pub parse_item<S>(input: &mut S) -> Rc<Node> {
     let Some(token) = input.next()? else {
         return Err(ParserError::UnexpectedEof);
@@ -84,6 +100,8 @@ def_parser!(pub parse_item<S>(input: &mut S) -> Rc<Node> {
 
     match token {
         Token::Keyword(Keyword::Fn) => parse_fn(input),
+        Token::Keyword(Keyword::Static) => parse_global_definition(input, false),
+        Token::Keyword(Keyword::Const) => parse_global_definition(input, true),
         _ => Err(ParserError::UnexpectedToken(token))
     }
 });

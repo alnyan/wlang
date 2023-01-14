@@ -17,6 +17,14 @@ pub struct Function {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct GlobalDefinition {
+    pub is_const: bool,
+    pub name: String,
+    pub ty: Rc<Node>,
+    pub value: Rc<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Ident(String),
     IntegerLiteral(u64),
@@ -26,6 +34,7 @@ pub enum Node {
     Function(Function),
     Block(Vec<Rc<Node>>),
     Statement(Rc<Node>),
+    GlobalDefinition(GlobalDefinition)
 }
 
 macro_rules! expect {

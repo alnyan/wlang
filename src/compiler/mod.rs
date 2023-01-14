@@ -27,8 +27,14 @@ pub enum Type {
 
 #[derive(Debug)]
 pub struct FunctionSignature {
-    return_type: Rc<Type>,
-    arg_types: Vec<Rc<Type>>,
+    pub return_type: Rc<Type>,
+    pub arg_types: Vec<Rc<Type>>,
+}
+
+#[derive(Debug)]
+pub struct GlobalValue {
+    pub ty: Rc<Type>,
+    pub is_const: bool
 }
 
 pub trait LocalScope {
