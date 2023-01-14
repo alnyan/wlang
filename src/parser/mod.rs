@@ -53,13 +53,13 @@ macro_rules! def_parser {
 }
 
 impl From<()> for ParserError {
-    fn from(value: ()) -> Self {
+    fn from(_: ()) -> Self {
         todo!()
     }
 }
 
 impl From<LexerError> for ParserError {
-    fn from(value: LexerError) -> Self {
+    fn from(_: LexerError) -> Self {
         todo!()
     }
 }

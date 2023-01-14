@@ -97,18 +97,14 @@ where
     }
 
     fn skip_comment(&mut self) -> Result<(), LexerError> {
-        let mut buf = String::new();
         loop {
             let Some(c) = self.input.next()? else {
                 return Ok(());
             };
 
             if c == '\n' {
-                dbg!(buf);
                 return Ok(());
             }
-
-            buf.push(c);
         }
     }
 

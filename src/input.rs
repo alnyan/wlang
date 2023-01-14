@@ -1,4 +1,4 @@
-use std::{fmt::Debug, io::BufReader, fs::File, iter::Peekable, str::Chars};
+use std::{fmt::Debug, iter::Peekable, str::Chars};
 
 pub trait Input<T> {
     type Error: Debug;
@@ -7,9 +7,9 @@ pub trait Input<T> {
     fn peek(&mut self) -> Result<Option<T>, Self::Error>;
 }
 
-pub struct FileInput {
-    reader: BufReader<File>
-}
+// pub struct FileInput {
+//     reader: BufReader<File>
+// }
 
 pub struct StrInput<'a> {
     iter: Peekable<Chars<'a>>

@@ -1,17 +1,14 @@
 #![feature(let_chains, trace_macros)]
 
-use std::{iter::Peekable, fs::File};
-
-use compiler::{pass1::{pass1_expr, pass1_module}, Context};
-use input::{Input, StrInput};
-use lexer::{token::Token, LexerInput, Lexer};
+use input::StrInput;
+use lexer::{Lexer, LexerInput};
 
 use crate::parser::program::parse_program;
 
-pub mod parser;
 pub mod compiler;
-pub mod lexer;
 pub mod input;
+pub mod lexer;
+pub mod parser;
 
 fn main() {
     let text = std::fs::read_to_string("test.rl").unwrap();
@@ -19,9 +16,8 @@ fn main() {
     let mut lexer_input = LexerInput::new(Lexer::new(input));
     let ast = parse_program(&mut lexer_input).unwrap();
 
-    dbg!(&ast);
-
-    let mut ctx = Context::new();
     // Setup context
-    pass1_module(&mut ctx, &ast).unwrap();
+    let pass0 = compiler::pass0_program(&ast).unwrap();
+    let pass1 = compiler::pass1_program(pass0, &ast).unwrap();
+    dbg!(&pass1);
 }
