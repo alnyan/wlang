@@ -1,7 +1,21 @@
+use std::rc::Rc;
+
+use inkwell::{
+    basic_block::BasicBlock, builder::Builder, context::Context, module::Module, values::Value,
+};
+
+use crate::{
+    lexer::token::{BasicOperator, Token},
+    parser::{Node, Function, GlobalDefinition},
+};
+
+use super::{CompilerError, Pass1Program};
+
 pub struct Codegen {
     context: Context,
     module: Module,
     builder: Builder,
+    pass1: Pass1Program,
 }
 
 pub fn compile_basic_binary(
@@ -11,16 +25,7 @@ pub fn compile_basic_binary(
     lhs: &Rc<Node>,
     rhs: &Rc<Node>,
 ) -> Result<Option<Value>, CompilerError> {
-    let llvm_lhs = compile_expr(cg, bb, lhs)?.unwrap();
-    let llvm_rhs = compile_expr(cg, bb, rhs)?.unwrap();
-
-    // TODO check types lmao
-    match op {
-        BasicOperator::Add => {
-            Ok(Some(cg.builder.build_int_add(&llvm_lhs, &llvm_rhs, "add1")))
-        }
-        _ => todo!()
-    }
+    todo!()
 }
 
 pub fn compile_binary(
@@ -101,14 +106,20 @@ pub fn compile_function(cg: &mut Codegen, func: &Function) -> Result<(), Compile
     Ok(())
 }
 
+pub fn compile_global_definition(cg: &mut Codegen, def: &GlobalDefinition) -> Result<(), CompilerError> {
+    // cg.module.add_global(type_, init_value, name);
+    todo!()
+}
+
 pub fn compile_item(cg: &mut Codegen, item: &Rc<Node>) -> Result<(), CompilerError> {
     match item.as_ref() {
+        Node::GlobalDefinition(def) => compile_global_definition(cg, def),
         Node::Function(func) => compile_function(cg, func),
         _ => todo!(),
     }
 }
 
-pub fn compile_module(name: &str, items: &[Rc<Node>]) -> Result<(), CompilerError> {
+pub fn compile_module(pass1: Pass1Program, name: &str, items: &[Rc<Node>]) -> Result<(), CompilerError> {
     let context = Context::create();
     let module = context.create_module(name);
     let builder = context.create_builder();
@@ -117,6 +128,7 @@ pub fn compile_module(name: &str, items: &[Rc<Node>]) -> Result<(), CompilerErro
         context,
         module,
         builder,
+        pass1
     };
 
     codegen.module.add_function(

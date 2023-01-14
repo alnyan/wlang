@@ -2,18 +2,25 @@ use std::rc::Rc;
 
 pub mod pass0;
 pub mod pass1;
+pub mod emit;
 
+use inkwell::{types::Type, context::Context};
 pub use pass0::{pass0_program, Pass0Program};
 pub use pass1::{pass1_program, Pass1Program};
+pub use emit::compile_module;
+
+use crate::parser::Node;
 
 #[derive(Debug, Clone)]
 pub enum CompilerError {
-    UnhandledNode,
+    TypeMismatchUnary(Rc<LangType>, Rc<LangType>),
+    InvalidOperation(Rc<Node>, String),
+    UnhandledNode(Rc<Node>),
     UndefinedType(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Type {
+pub enum LangType {
     Void,
     U64,
     I64,
@@ -27,17 +34,36 @@ pub enum Type {
 
 #[derive(Debug)]
 pub struct FunctionSignature {
-    pub return_type: Rc<Type>,
-    pub arg_types: Vec<Rc<Type>>,
+    pub return_type: Rc<LangType>,
+    pub arg_types: Vec<Rc<LangType>>,
 }
 
 #[derive(Debug)]
 pub struct GlobalValue {
-    pub ty: Rc<Type>,
+    pub ty: Rc<LangType>,
     pub is_const: bool
 }
 
-pub trait LocalScope {
-    fn local(&self, name: &str) -> Option<Rc<Type>>;
-    fn add_local(&mut self, name: &str, ty: Rc<Type>);
+#[derive(Debug, Clone)]
+pub struct LocalValue {
+    pub ty: Rc<LangType>,
+    pub is_mutable: bool
+}
+
+impl LangType {
+    pub const fn is_integer(&self) -> bool {
+        match self {
+            Self::Void => false,
+            _ => true,
+        }
+    }
+
+    pub fn to_llvm_type(&self, context: &Context) -> Option<Type> {
+        match self {
+            Self::Void => Some(context.void_type()),
+            Self::U64 => Some(context.i64_type()),
+            Self::I64 => Some(context.i64_type()),
+            _ => todo!()
+        }
+    }
 }

@@ -1,5 +1,8 @@
-static V0: i32 = 1234;
+static V0: u64 = 1234;
 
-fn main() -> i32 {
+fn main() -> u64 {
+    let x: u64 = 1;
+    let y: u64 = x + 2;
+
     V0
 }

@@ -1,8 +1,11 @@
 use std::rc::Rc;
 
-use crate::lexer::token::{Token, BasicOperator, Punctuation};
+use crate::lexer::token::{BasicOperator, Keyword, Punctuation, Token};
 
-use super::{ParserError, Node, program::maybe_call};
+use super::{
+    program::{maybe_call, parse_type},
+    LocalDefinition, Node, ParserError,
+};
 
 fn precedence(op: &Token) -> u32 {
     match op {
@@ -15,6 +18,22 @@ fn precedence(op: &Token) -> u32 {
     }
 }
 
+def_parser!(pub parse_local_definition<S>(input: &mut S) -> Rc<Node> {
+    // TODO maybe mut
+    expect!(input, Token::Ident(name));
+    expect!(input, Token::BasicOperator(BasicOperator::Colon));
+    let ty = parse_type(input)?;
+    expect!(input, Token::BasicOperator(BasicOperator::Assign));
+    let value = parse_expr(input)?;
+
+    Ok(Rc::new(Node::LocalDefinition(LocalDefinition {
+        is_mutable: false,
+        name,
+        ty,
+        value
+    })))
+});
+
 def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
     let Some(token) = input.next()? else {
         return Err(ParserError::UnexpectedEof);
@@ -23,6 +42,7 @@ def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
     match token {
         Token::Ident(name) => Ok(Rc::new(Node::Ident(name))),
         Token::IntegerLiteral(value) => Ok(Rc::new(Node::IntegerLiteral(value))),
+        Token::Keyword(Keyword::Let) => parse_local_definition(input),
         _ => Err(ParserError::UnexpectedToken(token))
     }
 });
