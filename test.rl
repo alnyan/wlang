@@ -1,5 +1,5 @@
-static V0: u32 = 1234;
+static V0: i32 = 1234;
 
 fn main() -> i32 {
-    1
+    V0
 }

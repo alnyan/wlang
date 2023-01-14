@@ -1,4 +1,4 @@
-/// Pass 0: Extract all available types (custom + prelude)
+//! Pass 0: Extract all available types (custom + prelude)
 use std::{collections::HashMap, rc::Rc};
 
 use crate::parser::Node;
