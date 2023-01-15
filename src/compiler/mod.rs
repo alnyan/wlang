@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{rc::Rc, cell::RefCell};
 
 pub mod pass0;
 pub mod pass1;
@@ -10,6 +10,8 @@ pub use pass1::{pass1_program, Pass1Program};
 pub use emit::compile_module;
 
 use crate::{parser::Node, lexer::token::Token};
+
+use self::pass1::Scope;
 
 #[derive(Debug, Clone)]
 pub enum CompilerError {
@@ -40,8 +42,10 @@ pub struct FunctionSignature {
 
 #[derive(Debug)]
 pub struct LangFunction {
+    pub name: String,
     pub signature: FunctionSignature,
-    // pub body: Rc<TaggedNode>
+    pub body: Rc<TaggedExpr>,
+    pub scope: Rc<RefCell<dyn Scope>>
 }
 
 #[derive(Debug)]
@@ -57,20 +61,31 @@ pub struct LocalValue {
 }
 
 #[derive(Debug, Clone)]
-pub enum TaggedNodeValue {
+pub enum TaggedExprValue {
     Binary {
         op: Token,
-        lhs: Rc<TaggedNode>,
-        rhs: Rc<TaggedNode>
+        lhs: Rc<TaggedExpr>,
+        rhs: Rc<TaggedExpr>
     },
+    Block(Vec<Rc<TaggedExpr>>),
+    Statement(Rc<TaggedExpr>),
+    LocalDefinition{
+        ty: Rc<LangType>,
+        value: Rc<TaggedExpr>
+    },
+    IntegerLiteral(u64),
     Ident(String)
 }
 
-#[derive(Debug, Clone)]
-pub struct TaggedNode {
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub struct TaggedExpr {
     pub ty: Rc<LangType>,
+    pub fn_index: usize,
+    pub scope_index: Option<usize>,
+    #[derivative(Debug="ignore")]
     pub ast_node: Rc<Node>,
-    pub value: TaggedNodeValue
+    pub value: TaggedExprValue
 }
 
 impl LangType {

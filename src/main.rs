@@ -1,5 +1,8 @@
 #![feature(let_chains, trace_macros)]
 
+#[macro_use]
+extern crate derivative;
+
 use input::StrInput;
 use lexer::{Lexer, LexerInput};
 

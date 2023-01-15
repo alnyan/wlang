@@ -1,12 +1,21 @@
-use std::{rc::Rc, cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::{compiler::{LangFunction, CompilerError, LocalValue, FunctionSignature, GlobalValue, Pass0Program}, parser::{Node, Function, GlobalDefinition}};
+use crate::{
+    compiler::{
+        CompilerError, FunctionSignature, GlobalValue, LangFunction, LocalValue, Pass0Program,
+    },
+    parser::{Function, GlobalDefinition, Node},
+};
 
-use super::{expr::{pass1_type, pass1_expr}, Pass1Program, FunctionScope, Scope};
-
+use super::{
+    expr::{pass1_expr, pass1_type},
+    FunctionScope, Pass1Program, Scope,
+};
 
 pub fn pass1_function(
     pass1: &Pass1Program,
+    index: usize,
+    name: String,
     args: &[(Rc<Node>, Rc<Node>)],
     ret_type: &Option<Rc<Node>>,
     body: &Rc<Node>,
@@ -35,17 +44,18 @@ pub fn pass1_function(
 
     let arg_types = locals.iter().map(|(_, t)| t.ty.clone()).collect();
 
-    let scope: Rc<RefCell<dyn Scope>> = Rc::new(RefCell::new(FunctionScope {
-        args: HashMap::from_iter(locals),
-        return_type: return_type.clone(),
-    }));
+    let scope: Rc<RefCell<dyn Scope>> = Rc::new(RefCell::new(FunctionScope::new(
+        return_type.clone(),
+        HashMap::from_iter(locals),
+        index,
+    )));
 
-    let return_value_type = pass1_expr(pass1, &scope, body)?;
+    let body = pass1_expr(pass1, &scope, body)?;
 
-    if return_value_type != return_type {
+    if body.ty != return_type {
         return Err(CompilerError::TypeMismatchUnary(
             return_type,
-            return_value_type,
+            body.ty.clone(),
         ));
     }
 
@@ -54,7 +64,10 @@ pub fn pass1_function(
         arg_types,
     };
     Ok(LangFunction {
-        signature
+        name,
+        signature,
+        body,
+        scope,
     })
 }
 
@@ -73,7 +86,7 @@ pub fn pass1_program(
     items: &[Rc<Node>],
 ) -> Result<Pass1Program, CompilerError> {
     let mut pass1 = Pass1Program {
-        functions: HashMap::new(),
+        functions: vec![],
         globals: HashMap::new(),
         pass0,
     };
@@ -86,9 +99,15 @@ pub fn pass1_program(
                 ret_type,
                 body,
             }) => {
-                pass1
-                    .functions
-                    .insert(name.clone(), pass1_function(&pass1, args, ret_type, body)?);
+                let index = pass1.functions.len();
+                pass1.functions.push(pass1_function(
+                    &pass1,
+                    index,
+                    name.clone(),
+                    args,
+                    ret_type,
+                    body,
+                )?);
             }
             Node::GlobalDefinition(GlobalDefinition {
                 is_const, name, ty, ..
