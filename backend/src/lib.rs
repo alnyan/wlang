@@ -1,9 +1,13 @@
 use std::{cell::RefCell, rc::Rc};
 
+#[macro_use]
+extern crate derivative;
+
 pub mod emit;
 pub mod pass0;
 pub mod pass1;
 
+use ast::{Node, Token};
 pub use emit::compile_module;
 use inkwell::{
     context::ContextRef,
@@ -11,8 +15,6 @@ use inkwell::{
 };
 pub use pass0::{pass0_program, Pass0Program};
 pub use pass1::{pass1_program, Pass1Program};
-
-use crate::{lexer::token::Token, parser::Node};
 
 use self::pass1::Scope;
 

@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
 
-use crate::compiler::{LangType, LocalValue};
+use crate::{LangType, LocalValue};
 
 #[derive(Debug)]
 pub struct FunctionScope {

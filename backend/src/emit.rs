@@ -1,5 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+use ast::{token::BasicOperator, Node, Token};
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -11,14 +12,9 @@ use inkwell::{
     },
 };
 
-use crate::{
-    lexer::token::{BasicOperator, Token},
-    parser::Node,
-};
-
 use super::{
     pass1::Scope, CompilerError, FunctionImplementation, FunctionSignature, GlobalValue,
-    LangFunction, Pass1Program, TaggedExpr, TaggedExprValue,
+    Pass1Program, TaggedExpr, TaggedExprValue,
 };
 
 pub struct Codegen<'a> {
@@ -116,7 +112,7 @@ impl<'a> Codegen<'a> {
 
         Ok(self
             .module
-            .add_function(&name, llvm_func_ty, Some(Linkage::External)))
+            .add_function(name, llvm_func_ty, Some(Linkage::External)))
     }
 
     pub fn compile_simple_call(

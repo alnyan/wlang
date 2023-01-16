@@ -1,10 +1,10 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+use ast::Node;
+
 use crate::{
-    compiler::{
-        CompilerError, FunctionSignature, GlobalValue, LangFunction, LocalValue, Pass0Program, FunctionImplementation,
-    },
-    parser::{Function, GlobalDefinition, Node},
+    CompilerError, FunctionImplementation, FunctionSignature, GlobalValue, LangFunction,
+    LocalValue, Pass0Program,
 };
 
 use super::{
@@ -14,7 +14,6 @@ use super::{
 
 pub fn pass1_function_signature(
     pass1: &Pass1Program,
-    name: String,
     args: &[(Rc<Node>, Rc<Node>)],
     ret_type: &Option<Rc<Node>>,
 ) -> Result<FunctionSignature, CompilerError> {
@@ -24,10 +23,13 @@ pub fn pass1_function_signature(
         pass1.pass0.void_type()
     };
 
-    let arg_types = args.iter().map(|(name, ty)| match name.as_ref() {
-        Node::Ident(name) => pass1_type(pass1, ty).map(|ty| (name.clone(), ty)),
-        _ => todo!()
-    }).collect::<Result<Vec<_>, _>>()?;
+    let arg_types = args
+        .iter()
+        .map(|(name, ty)| match name.as_ref() {
+            Node::Ident(name) => pass1_type(pass1, ty).map(|ty| (name.clone(), ty)),
+            _ => todo!(),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(FunctionSignature {
         return_type,
@@ -69,10 +71,7 @@ pub fn pass1_function_impl(
         ));
     }
 
-    Ok(FunctionImplementation {
-        body,
-        scope
-    })
+    Ok(FunctionImplementation { body, scope })
 }
 
 pub fn pass1_global_definition(
@@ -105,26 +104,26 @@ pub fn pass1_program(
     // Extract function signatures and globals
     for item in items {
         match item.as_ref() {
-            Node::Function(Function {
+            Node::Function {
                 name,
                 args,
                 ret_type,
-                body
-            }) => {
-                let signature = pass1_function_signature(&pass1, name.clone(), args, ret_type)?;
+                body,
+            } => {
+                let signature = pass1_function_signature(&pass1, args, ret_type)?;
                 pass1.functions.push(LangFunction {
                     name: name.clone(),
                     body_node: body.clone(),
                     signature,
-                    implementation: None
+                    implementation: None,
                 });
             }
-            Node::GlobalDefinition(GlobalDefinition {
+            Node::GlobalDefinition {
                 is_const,
                 name,
                 ty,
                 value,
-            }) => {
+            } => {
                 let gv = pass1_global_definition(&pass1, *is_const, ty, value.clone())?;
                 pass1.globals.insert(name.clone(), gv);
             }
@@ -133,9 +132,12 @@ pub fn pass1_program(
     }
 
     // Extract function implementations
-    let impls = pass1.functions.iter().enumerate().map(|(index, f)| {
-        pass1_function_impl(&pass1, index, &f.signature, &f.body_node)
-    }).collect::<Result<Vec<_>, _>>()?;
+    let impls = pass1
+        .functions
+        .iter()
+        .enumerate()
+        .map(|(index, f)| pass1_function_impl(&pass1, index, &f.signature, &f.body_node))
+        .collect::<Result<Vec<_>, _>>()?;
 
     impls.into_iter().enumerate().for_each(|(index, i)| {
         pass1.functions[index].implementation = Some(i);

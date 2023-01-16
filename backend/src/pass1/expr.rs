@@ -1,10 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{
-    compiler::{CompilerError, LangType, LocalValue, TaggedExpr, TaggedExprValue},
-    lexer::token::{BasicOperator, Token},
-    parser::{LocalDefinition, Node},
-};
+use ast::{token::BasicOperator, Node, Token};
+
+use crate::{CompilerError, LangType, LocalValue, TaggedExpr, TaggedExprValue};
 
 use super::{Pass1Program, Scope};
 
@@ -23,13 +21,15 @@ pub fn pass1_local_definition(
     pass1: &Pass1Program,
     scope: &Rc<RefCell<dyn Scope>>,
     expr: &Rc<Node>,
-    def: &LocalDefinition,
+    name: &str,
+    is_mutable: bool,
+    ty: &Rc<Node>,
+    value: &Rc<Node>,
 ) -> Result<Rc<TaggedExpr>, CompilerError> {
-    let is_mutable = def.is_mutable;
-    let ty = pass1_type(pass1, &def.ty)?;
+    let ty = pass1_type(pass1, ty)?;
 
     // Check value
-    let value = pass1_expr(pass1, scope, &def.value)?;
+    let value = pass1_expr(pass1, scope, value)?;
 
     if value.ty != ty {
         return Err(CompilerError::TypeMismatchUnary(ty, value.ty.clone()));
@@ -39,7 +39,7 @@ pub fn pass1_local_definition(
     let fn_index = scope.borrow().function_index();
 
     scope.borrow_mut().add_local(
-        def.name.as_str(),
+        name,
         LocalValue {
             ty: ty.clone(),
             is_mutable,
@@ -55,7 +55,7 @@ pub fn pass1_local_definition(
         fn_index: scope.borrow().function_index(),
         value: TaggedExprValue::LocalDefinition {
             ty,
-            name: def.name.clone(),
+            name: name.to_owned(),
             value,
         },
     }))
@@ -188,7 +188,10 @@ pub fn pass1_call(
             if &arg.ty == expected {
                 Ok(())
             } else {
-                Err(CompilerError::TypeMismatchUnary(expected.clone(), arg.ty.clone()))
+                Err(CompilerError::TypeMismatchUnary(
+                    expected.clone(),
+                    arg.ty.clone(),
+                ))
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -209,11 +212,11 @@ pub fn pass1_expr(
 ) -> Result<Rc<TaggedExpr>, CompilerError> {
     match expr.as_ref() {
         Node::Ident(name) => {
-            let ty = if let Some(local) = scope.borrow().local(name.as_str()) {
+            let ty = if let Some(local) = scope.borrow().local(name) {
                 local.ty
-            } else if let Some(global) = pass1.globals.get(name.as_str()) {
+            } else if let Some(global) = pass1.globals.get(name) {
                 global.ty.clone()
-            } else if let Some(_) = pass1.function(name.as_str()) {
+            } else if pass1.function(name).is_some() {
                 pass1.pass0.void_type()
             } else {
                 todo!()
@@ -247,7 +250,12 @@ pub fn pass1_expr(
             value: TaggedExprValue::IntegerLiteral(*value),
         })),
         Node::Binary(op, lhs, rhs) => pass1_binary(pass1, scope, expr, op, lhs, rhs),
-        Node::LocalDefinition(def) => pass1_local_definition(pass1, scope, expr, def),
+        Node::LocalDefinition {
+            name,
+            is_mutable,
+            ty,
+            value,
+        } => pass1_local_definition(pass1, scope, expr, name, *is_mutable, ty, value),
         Node::Call(callee, args) => pass1_call(pass1, scope, expr, callee, args),
         _ => todo!("{:?}", expr),
     }

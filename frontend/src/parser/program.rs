@@ -1,11 +1,14 @@
 use std::rc::Rc;
 
-use crate::lexer::token::{BasicOperator, Keyword, Punctuation, Token};
+use ast::{
+    token::{BasicOperator, Keyword, Punctuation},
+    Node, Token,
+};
 
 use super::{
     combinator::{parse_delimited, parse_many0},
     expr::{parse_expr, parse_statement_expr},
-    Function, GlobalDefinition, Node, ParserError,
+    ParserError,
 };
 
 def_parser!(pub maybe_call<S>(input: &mut S, left: Rc<Node>) -> Rc<Node> {
@@ -69,12 +72,12 @@ def_parser!(pub parse_fn<S>(input: &mut S) -> Rc<Node> {
 
     let body = parse_block(input)?;
 
-    Ok(Rc::new(Node::Function(Function {
+    Ok(Rc::new(Node::Function {
         args,
         name,
         ret_type,
         body
-    })))
+    }))
 });
 
 def_parser!(pub parse_global_definition<S>(input: &mut S, is_const: bool) -> Rc<Node> {
@@ -85,12 +88,12 @@ def_parser!(pub parse_global_definition<S>(input: &mut S, is_const: bool) -> Rc<
     let value = parse_expr(input)?;
     expect!(input, Token::Punctuation(Punctuation::Semicolon), "Semicolon".to_owned());
 
-    Ok(Rc::new(Node::GlobalDefinition(GlobalDefinition {
+    Ok(Rc::new(Node::GlobalDefinition {
         is_const,
         name,
         ty,
         value
-    })))
+    }))
 });
 
 def_parser!(pub parse_item<S>(input: &mut S) -> Rc<Node> {

@@ -1,4 +1,4 @@
-use crate::lexer::token::Token;
+use ast::Token;
 
 use super::ParserError;
 

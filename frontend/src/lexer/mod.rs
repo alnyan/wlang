@@ -1,10 +1,11 @@
 use std::str::FromStr;
 
+use ast::{
+    token::{BasicOperator, FromChar, Punctuation, Keyword},
+    Token,
+};
+
 use crate::input::Input;
-
-pub mod token;
-
-use self::token::{BasicOperator, FromChar, Keyword, Punctuation, Token};
 
 pub struct Lexer<S: Input<char>> {
     input: S,
@@ -164,7 +165,8 @@ where
             } else {
                 todo!()
             }
-        }.map(Some)
+        }
+        .map(Some)
     }
 
     pub fn lex_all(&mut self) -> Result<Vec<Token>, LexerError> {
@@ -187,7 +189,10 @@ impl<S: Input<char>> LexerInput<S> {
     }
 }
 
-impl<S: Input<char>> Input<Token> for LexerInput<S> where LexerError: From<<S as Input<char>>::Error> {
+impl<S: Input<char>> Input<Token> for LexerInput<S>
+where
+    LexerError: From<<S as Input<char>>::Error>,
+{
     type Error = LexerError;
 
     fn next(&mut self) -> Result<Option<Token>, Self::Error> {
@@ -215,10 +220,12 @@ impl From<()> for LexerError {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        input::{StrInput, Input},
-        lexer::token::{BasicOperator, Keyword, Punctuation, Token},
+    use ast::{
+        token::{BasicOperator, Keyword, Punctuation},
+        Token,
     };
+
+    use crate::input::{Input, StrInput};
 
     use super::{Lexer, LexerInput};
 
@@ -386,8 +393,14 @@ fn main() {
         assert_eq!(input.peek(), Ok(Some(Token::Ident("a".to_owned()))));
         assert_eq!(input.peek(), Ok(Some(Token::Ident("a".to_owned()))));
         assert_eq!(input.next(), Ok(Some(Token::Ident("a".to_owned()))));
-        assert_eq!(input.peek(), Ok(Some(Token::BasicOperator(BasicOperator::Add))));
-        assert_eq!(input.next(), Ok(Some(Token::BasicOperator(BasicOperator::Add))));
+        assert_eq!(
+            input.peek(),
+            Ok(Some(Token::BasicOperator(BasicOperator::Add)))
+        );
+        assert_eq!(
+            input.next(),
+            Ok(Some(Token::BasicOperator(BasicOperator::Add)))
+        );
         assert_eq!(input.peek(), Ok(Some(Token::Ident("b".to_owned()))));
         assert_eq!(input.next(), Ok(Some(Token::Ident("b".to_owned()))));
         assert_eq!(input.peek(), Ok(None));
@@ -397,8 +410,14 @@ fn main() {
         let mut input = LexerInput::new(Lexer::new(StrInput::new("a + b")));
 
         assert_eq!(input.next(), Ok(Some(Token::Ident("a".to_owned()))));
-        assert_eq!(input.peek(), Ok(Some(Token::BasicOperator(BasicOperator::Add))));
-        assert_eq!(input.next(), Ok(Some(Token::BasicOperator(BasicOperator::Add))));
+        assert_eq!(
+            input.peek(),
+            Ok(Some(Token::BasicOperator(BasicOperator::Add)))
+        );
+        assert_eq!(
+            input.next(),
+            Ok(Some(Token::BasicOperator(BasicOperator::Add)))
+        );
         assert_eq!(input.peek(), Ok(Some(Token::Ident("b".to_owned()))));
         assert_eq!(input.next(), Ok(Some(Token::Ident("b".to_owned()))));
         assert_eq!(input.peek(), Ok(None));

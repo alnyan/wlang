@@ -1,11 +1,14 @@
 use std::rc::Rc;
 
-use crate::lexer::token::{BasicOperator, Keyword, Punctuation, Token};
+use ast::{
+    token::{BasicOperator, Keyword, Punctuation},
+    Node, Token,
+};
 
 use super::{
     combinator::parse_many0,
     program::{maybe_call, parse_type},
-    LocalDefinition, Node, ParserError,
+    ParserError,
 };
 
 fn precedence(op: &Token) -> u32 {
@@ -27,12 +30,12 @@ def_parser!(pub parse_local_definition<S>(input: &mut S) -> Rc<Node> {
     expect!(input, Token::BasicOperator(BasicOperator::Assign), "Assign".to_owned());
     let value = parse_expr(input)?;
 
-    Ok(Rc::new(Node::LocalDefinition(LocalDefinition {
+    Ok(Rc::new(Node::LocalDefinition {
         is_mutable: false,
         name,
         ty,
         value
-    })))
+    }))
 });
 
 def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
