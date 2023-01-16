@@ -6,8 +6,8 @@ use inkwell::{
     module::{Linkage, Module},
     types::AnyTypeEnum,
     values::{
-        AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, FunctionValue,
-        GlobalValue as LlvmGlobalValue, PointerValue, BasicValueEnum,
+        AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
+        GlobalValue as LlvmGlobalValue, PointerValue,
     },
 };
 
@@ -17,8 +17,8 @@ use crate::{
 };
 
 use super::{
-    pass1::Scope, CompilerError, GlobalValue, LangFunction, Pass1Program, TaggedExpr,
-    TaggedExprValue,
+    pass1::Scope, CompilerError, FunctionImplementation, FunctionSignature, GlobalValue,
+    LangFunction, Pass1Program, TaggedExpr, TaggedExprValue,
 };
 
 pub struct Codegen<'a> {
@@ -41,7 +41,7 @@ pub struct LlvmFunctionScope<'a> {
 
 pub enum IdentValue<'a> {
     Variable(PointerValue<'a>),
-    Argument(BasicValueEnum<'a>)
+    Argument(BasicValueEnum<'a>),
 }
 
 impl<'a> Codegen<'a> {
@@ -63,39 +63,29 @@ impl<'a> Codegen<'a> {
         fn_index: usize,
         scope_index: Option<usize>,
     ) -> Option<Rc<RefCell<dyn Scope>>> {
-        let func_scope = self.pass1.functions[fn_index].scope.clone();
+        let implementation = self.pass1.functions[fn_index]
+            .implementation
+            .as_ref()
+            .unwrap();
+        let func_scope = implementation.scope.clone();
         if let Some(scope_index) = scope_index {
             func_scope.borrow().scope(scope_index)
         } else {
             Some(func_scope)
         }
     }
-    pub fn compile_function(&mut self, func: &'a LangFunction) -> Result<(), CompilerError> {
-        let llvm_arg_types = func
-            .signature
-            .arg_types
-            .iter()
-            .map(|(_, ty)| ty.as_basic_metadata_type(self.module.get_context()))
-            .collect::<Vec<_>>();
 
-        let llvm_func_ty = func
-            .signature
-            .return_type
-            .make_llvm_function_type(self.module.get_context(), &llvm_arg_types);
-        let llvm_func = self
-            .module
-            .add_function(&func.name, llvm_func_ty, Some(Linkage::External));
-        let llvm_func_scope = LlvmFunctionScope {
-            func: llvm_func,
-            param_mapping: HashMap::from_iter(func.signature.arg_types.iter().map(|(k, v)| k).cloned().enumerate().map(|(k, v)| (v, k)))
-        };
-
+    pub fn compile_function_implementation(
+        &mut self,
+        implementation: &'a FunctionImplementation,
+        llvm_func: &LlvmFunctionScope<'a>,
+    ) -> Result<(), CompilerError> {
         let llvm_basic_block = self
             .module
             .get_context()
-            .append_basic_block(llvm_func, "entry");
+            .append_basic_block(llvm_func.func, "entry");
         self.builder.position_at_end(llvm_basic_block);
-        let return_value = self.compile_expr(&llvm_func_scope, &func.body)?;
+        let return_value = self.compile_expr(llvm_func, &implementation.body)?;
 
         if let Some(return_value) = return_value {
             match return_value {
@@ -107,6 +97,26 @@ impl<'a> Codegen<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn compile_function_signature(
+        &mut self,
+        name: &str,
+        func: &'a FunctionSignature,
+    ) -> Result<FunctionValue<'a>, CompilerError> {
+        let llvm_arg_types = func
+            .arg_types
+            .iter()
+            .map(|(_, ty)| ty.as_basic_metadata_type(self.module.get_context()))
+            .collect::<Vec<_>>();
+
+        let llvm_func_ty = func
+            .return_type
+            .make_llvm_function_type(self.module.get_context(), &llvm_arg_types);
+
+        Ok(self
+            .module
+            .add_function(&name, llvm_func_ty, Some(Linkage::External)))
     }
 
     pub fn compile_simple_call(
@@ -224,7 +234,7 @@ impl<'a> Codegen<'a> {
 
                 Ok(Some(match ptr {
                     IdentValue::Variable(ptr) => self.builder.build_load(ptr, "").into(),
-                    IdentValue::Argument(val) => val.into()
+                    IdentValue::Argument(val) => val.into(),
                 }))
             } // _ => todo!("{:?}", expr),
             TaggedExprValue::Call(callee, args) => match &callee.value {
@@ -267,8 +277,32 @@ impl<'a> Codegen<'a> {
             self.compile_global_definition(name, global)?;
         }
 
-        for func in self.pass1.functions.iter() {
-            self.compile_function(func)?;
+        let func_values = self
+            .pass1
+            .functions
+            .iter()
+            .map(|f| self.compile_function_signature(&f.name, &f.signature))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        for (index, func) in self.pass1.functions.iter().enumerate() {
+            if let Some(implementation) = func.implementation.as_ref() {
+                let llvm_func = func_values[index];
+
+                let llvm_func_scope = LlvmFunctionScope {
+                    func: llvm_func,
+                    param_mapping: HashMap::from_iter(
+                        func.signature
+                            .arg_types
+                            .iter()
+                            .map(|(k, _)| k)
+                            .cloned()
+                            .enumerate()
+                            .map(|(k, v)| (v, k)),
+                    ),
+                };
+
+                self.compile_function_implementation(implementation, &llvm_func_scope)?;
+            }
         }
 
         self.module.print_to_stderr();
@@ -289,7 +323,12 @@ impl<'a> Codegen<'a> {
             .unwrap()
     }
 
-    fn local_value(&self, llvm_func: &LlvmFunctionScope<'a>, scope: &Rc<RefCell<dyn Scope>>, name: &str) -> Option<IdentValue<'a>> {
+    fn local_value(
+        &self,
+        llvm_func: &LlvmFunctionScope<'a>,
+        scope: &Rc<RefCell<dyn Scope>>,
+        name: &str,
+    ) -> Option<IdentValue<'a>> {
         if let Some(local) = scope.borrow().local(name) {
             if let Some(scope_index) = local.scope_index {
                 // Local variable

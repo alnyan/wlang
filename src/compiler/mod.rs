@@ -44,11 +44,17 @@ pub struct FunctionSignature {
 }
 
 #[derive(Debug)]
-pub struct LangFunction {
-    pub name: String,
-    pub signature: FunctionSignature,
+pub struct FunctionImplementation {
     pub body: Rc<TaggedExpr>,
     pub scope: Rc<RefCell<dyn Scope>>,
+}
+
+#[derive(Debug)]
+pub struct LangFunction {
+    pub name: String,
+    pub body_node: Rc<Node>,
+    pub signature: FunctionSignature,
+    pub implementation: Option<FunctionImplementation>,
 }
 
 #[derive(Debug)]
