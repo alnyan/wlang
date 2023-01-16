@@ -1,3 +1,5 @@
+#![feature(let_chains)]
+
 use std::{cell::RefCell, rc::Rc};
 
 #[macro_use]
@@ -41,6 +43,7 @@ pub enum LangIntType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LangType {
     Void,
+    BoolType,
     IntType(LangIntType),
 }
 
@@ -140,6 +143,7 @@ impl LangType {
     ) -> FunctionType<'a> {
         match self {
             Self::IntType(it) => it.as_llvm_basic_type(context).fn_type(arg_types, false),
+            Self::BoolType => context.bool_type().fn_type(arg_types, false),
             Self::Void => context.void_type().fn_type(arg_types, false),
         }
     }
@@ -147,6 +151,7 @@ impl LangType {
     pub fn as_llvm_basic_type<'a>(&self, context: ContextRef<'a>) -> Option<BasicTypeEnum<'a>> {
         match self {
             Self::IntType(it) => Some(it.as_llvm_basic_type(context)),
+            Self::BoolType => Some(context.bool_type().into()),
             Self::Void => None,
         }
     }

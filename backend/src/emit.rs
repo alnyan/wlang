@@ -201,7 +201,7 @@ impl<'a> Codegen<'a> {
                 Ok(None)
             }
             TaggedExprValue::Binary { op, lhs, rhs } => {
-                let rhs = self.compile_expr(llvm_func, loop_exit, rhs)?.unwrap();
+                let llvm_rhs = self.compile_expr(llvm_func, loop_exit, rhs)?.unwrap();
 
                 if *op == Token::BasicOperator(BasicOperator::Assign) {
                     let TaggedExprValue::Ident(name) = &lhs.value else {
@@ -216,7 +216,7 @@ impl<'a> Codegen<'a> {
                         IdentValue::Variable(ptr) => {
                             self.builder.build_store(
                                 ptr,
-                                match rhs {
+                                match llvm_rhs {
                                     AnyValueEnum::IntValue(i) => BasicValueEnum::IntValue(i),
                                     _ => todo!(),
                                 },
@@ -227,49 +227,56 @@ impl<'a> Codegen<'a> {
                         _ => todo!(),
                     }
                 } else {
-                    let lhs = self.compile_expr(llvm_func, loop_exit, lhs)?.unwrap();
+                    let llvm_lhs = self.compile_expr(llvm_func, loop_exit, lhs)?.unwrap();
 
                     let value = match expr.ty.as_ref() {
                         LangType::IntType(ty) => {
-                            let lhs = lhs.into_int_value();
-                            let rhs = rhs.into_int_value();
+                            let llvm_lhs = llvm_lhs.into_int_value();
+                            let llvm_rhs = llvm_rhs.into_int_value();
                             let (_, signed) = ty.as_llvm_int_type(self.module.get_context());
 
                             if let Token::BasicOperator(op) = op {
                                 match op {
                                     BasicOperator::Add => {
-                                        self.builder.build_int_add(lhs, rhs, "").into()
+                                        self.builder.build_int_add(llvm_lhs, llvm_rhs, "").into()
                                     }
                                     BasicOperator::Sub => {
-                                        self.builder.build_int_sub(lhs, rhs, "").into()
+                                        self.builder.build_int_sub(llvm_lhs, llvm_rhs, "").into()
                                     }
                                     BasicOperator::Mul => {
                                         todo!()
                                     }
                                     BasicOperator::Div => {
                                         if signed {
-                                            self.builder.build_int_signed_div(lhs, rhs, "").into()
+                                            self.builder.build_int_signed_div(llvm_lhs, llvm_rhs, "").into()
                                         } else {
-                                            self.builder.build_int_unsigned_div(lhs, rhs, "").into()
+                                            self.builder.build_int_unsigned_div(llvm_lhs, llvm_rhs, "").into()
                                         }
                                     }
                                     BasicOperator::Mod => {
                                         if signed {
-                                            self.builder.build_int_signed_rem(lhs, rhs, "").into()
+                                            self.builder.build_int_signed_rem(llvm_lhs, llvm_rhs, "").into()
                                         } else {
-                                            self.builder.build_int_unsigned_rem(lhs, rhs, "").into()
+                                            self.builder.build_int_unsigned_rem(llvm_lhs, llvm_rhs, "").into()
                                         }
                                     }
-                                    _ if op.is_comparison() => self
-                                        .builder
-                                        .build_int_compare(
-                                            op.as_int_comparison_predicate(signed),
-                                            lhs,
-                                            rhs,
-                                            "",
-                                        )
-                                        .into(),
                                     _ => todo!(),
+                                }
+                            } else {
+                                todo!()
+                            }
+                        }
+                        LangType::BoolType => {
+                            if let Token::BasicOperator(op) = op && op.is_comparison() {
+                                assert_eq!(lhs.ty, rhs.ty);
+                                match lhs.ty.as_ref() {
+                                    LangType::IntType(ty) => {
+                                        let llvm_lhs = llvm_lhs.into_int_value();
+                                        let llvm_rhs = llvm_rhs.into_int_value();
+                                        let (_, signed) = ty.as_llvm_int_type(self.module.get_context());
+                                        self.builder.build_int_compare(op.as_int_comparison_predicate(signed), llvm_lhs, llvm_rhs, "").into()
+                                    }
+                                    _ => todo!()
                                 }
                             } else {
                                 todo!()

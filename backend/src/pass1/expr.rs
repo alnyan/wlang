@@ -87,7 +87,7 @@ fn pass1_basic_binary(
         | BasicOperator::Ne
         | BasicOperator::Eq => {
             if lhs == rhs {
-                Ok(pass1.pass0.named_type("u64").unwrap())
+                Ok(pass1.pass0.bool_type())
             } else {
                 todo!()
             }
@@ -190,6 +190,11 @@ pub fn pass1_condition(
     if_false: &Option<Rc<Node>>,
 ) -> Result<Rc<TaggedExpr>, CompilerError> {
     let condition = pass1_expr(pass1, scope, condition)?;
+
+    if condition.ty != pass1.pass0.bool_type() {
+        todo!()
+    }
+
     let if_true = pass1_expr(pass1, scope, if_true)?;
     let if_false = if let Some(if_false) = if_false {
         Some(pass1_expr(pass1, scope, if_false)?)

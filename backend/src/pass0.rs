@@ -10,6 +10,7 @@ use super::{CompilerError, LangType};
 #[derive(Debug)]
 pub struct Pass0Program {
     types: HashMap<String, Rc<LangType>>,
+    bool_type: Rc<LangType>,
     i64_type: Rc<LangType>,
     void_type: Rc<LangType>,
 }
@@ -21,6 +22,10 @@ impl Pass0Program {
 
     pub fn void_type(&self) -> Rc<LangType> {
         self.void_type.clone()
+    }
+
+    pub fn bool_type(&self) -> Rc<LangType> {
+        self.bool_type.clone()
     }
 
     pub fn i64_type(&self) -> Rc<LangType> {
@@ -39,6 +44,7 @@ impl Pass0Program {
 pub fn pass0_program(_items: &[Rc<Node>]) -> Result<Pass0Program, CompilerError> {
     // TODO custom types
     let i64_type = Rc::new(LangType::IntType(LangIntType::I64));
+    let bool_type = Rc::new(LangType::BoolType);
 
     Ok(Pass0Program {
         types: HashMap::from_iter([
@@ -67,6 +73,7 @@ pub fn pass0_program(_items: &[Rc<Node>]) -> Result<Pass0Program, CompilerError>
             ("u8".to_owned(), Rc::new(LangType::IntType(LangIntType::U8))),
         ]),
         i64_type,
+        bool_type,
         void_type: Rc::new(LangType::Void),
     })
 }
