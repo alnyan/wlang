@@ -5,7 +5,7 @@ use crate::Token;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Ident(String),
-    IntegerLiteral(u64),
+    IntegerLiteral(u64, String),
     Binary(Token, Rc<Node>, Rc<Node>),
     Type(String),
     Call(Rc<Node>, Vec<Rc<Node>>),

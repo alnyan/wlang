@@ -18,6 +18,8 @@ fn precedence(op: &Token) -> u32 {
         Token::BasicOperator(BasicOperator::Sub) => 5,
         Token::BasicOperator(BasicOperator::Mul) => 10,
         Token::BasicOperator(BasicOperator::Assign) => 0,
+        Token::BasicOperator(BasicOperator::Div) => 10,
+        Token::BasicOperator(BasicOperator::Mod) => 10,
         _ => panic!(),
     }
 }
@@ -69,7 +71,7 @@ def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
 
     match token {
         Token::Ident(name) => Ok(Rc::new(Node::Ident(name))),
-        Token::IntegerLiteral(value) => Ok(Rc::new(Node::IntegerLiteral(value))),
+        Token::IntegerLiteral(value, extra) => Ok(Rc::new(Node::IntegerLiteral(value, extra))),
         Token::Keyword(Keyword::Let) => parse_local_definition(input),
         Token::Keyword(Keyword::If) => parse_condition(input),
         Token::Keyword(Keyword::While) => parse_while_loop(input),

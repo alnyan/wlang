@@ -16,7 +16,7 @@ pub struct Pass1Program {
     pub(super) functions: Vec<LangFunction>,
     pub(super) globals: HashMap<String, GlobalValue>,
     // Pass 0 info
-    pass0: Pass0Program,
+    pub(super) pass0: Pass0Program,
 }
 
 impl Pass1Program {

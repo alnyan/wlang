@@ -1,17 +1,20 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, path::Path, fs::File, io::Write};
+use std::{cell::RefCell, collections::HashMap, fs::File, io::Write, path::Path, rc::Rc};
 
 use ast::{token::BasicOperator, Node, Token};
 use inkwell::{
     builder::Builder,
     context::Context,
+    memory_buffer::MemoryBuffer,
     module::{Linkage, Module},
     types::AnyTypeEnum,
     values::{
         AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
         GlobalValue as LlvmGlobalValue, PointerValue,
     },
-    IntPredicate, memory_buffer::MemoryBuffer,
+    IntPredicate,
 };
+
+use crate::LangType;
 
 use super::{
     pass1::Scope, CompilerError, FunctionImplementation, FunctionSignature, GlobalValue,
@@ -113,6 +116,8 @@ impl<'a> Codegen<'a> {
                 }
                 _ => todo!(),
             }
+        } else {
+            self.builder.build_return(None);
         }
 
         Ok(())
@@ -142,7 +147,7 @@ impl<'a> Codegen<'a> {
         &self,
         llvm_func_scope: &LlvmFunctionScope<'a>,
         name: &str,
-        args: &[Rc<TaggedExpr>],
+        args: &'a [Rc<TaggedExpr>],
     ) -> Result<Option<AnyValueEnum>, CompilerError> {
         let llvm_func = self.module.get_function(name).unwrap();
         let compiled_args = args
@@ -165,7 +170,7 @@ impl<'a> Codegen<'a> {
     pub fn compile_expr(
         &self,
         llvm_func: &LlvmFunctionScope<'a>,
-        expr: &Rc<TaggedExpr>,
+        expr: &'a Rc<TaggedExpr>,
     ) -> Result<Option<AnyValueEnum>, CompilerError> {
         let scope = self.scope(expr.fn_index, expr.scope_index).unwrap();
         match &expr.value {
@@ -221,44 +226,49 @@ impl<'a> Codegen<'a> {
                     }
                 } else {
                     let lhs = self.compile_expr(llvm_func, lhs)?.unwrap();
-                    let llvm_ty = expr.ty.as_llvm_any_type(self.module.get_context()).unwrap();
+                    // let llvm_ty = expr.ty.as_llvm_any_type(self.module.get_context()).unwrap();
 
-                    let value = match llvm_ty {
-                        AnyTypeEnum::IntType(_) => {
+                    let value = match expr.ty.as_ref() {
+                        LangType::IntType(ty) => {
                             let lhs = lhs.into_int_value();
                             let rhs = rhs.into_int_value();
+                            let (_, signed) = ty.as_llvm_int_type(self.module.get_context());
 
                             if let Token::BasicOperator(op) = op {
-                                if op.is_arithmetic() {
-                                    match op {
-                                        BasicOperator::Add => {
-                                            self.builder.build_int_add(lhs, rhs, "").into()
-                                        }
-                                        BasicOperator::Sub => {
-                                            self.builder.build_int_sub(lhs, rhs, "").into()
-                                        }
-                                        BasicOperator::Mul => {
-                                            self.builder.build_int_mul(lhs, rhs, "").into()
-                                        }
-                                        BasicOperator::Div => {
+                                match op {
+                                    BasicOperator::Add => {
+                                        self.builder.build_int_add(lhs, rhs, "").into()
+                                    }
+                                    BasicOperator::Sub => {
+                                        self.builder.build_int_sub(lhs, rhs, "").into()
+                                    }
+                                    BasicOperator::Mul => {
+                                        todo!()
+                                    }
+                                    BasicOperator::Div => {
+                                        if signed {
+                                            self.builder.build_int_signed_div(lhs, rhs, "").into()
+                                        } else {
                                             self.builder.build_int_unsigned_div(lhs, rhs, "").into()
                                         }
-                                        BasicOperator::Mod => {
+                                    }
+                                    BasicOperator::Mod => {
+                                        if signed {
+                                            self.builder.build_int_signed_rem(lhs, rhs, "").into()
+                                        } else {
                                             self.builder.build_int_unsigned_rem(lhs, rhs, "").into()
                                         }
-                                        _ => todo!(),
                                     }
-                                } else if op.is_comparison() {
-                                    self.builder
+                                    _ if op.is_comparison() => self
+                                        .builder
                                         .build_int_compare(
-                                            op.as_int_comparison_predicate(false),
+                                            op.as_int_comparison_predicate(signed),
                                             lhs,
                                             rhs,
                                             "",
                                         )
-                                        .into()
-                                } else {
-                                    todo!()
+                                        .into(),
+                                    _ => todo!(),
                                 }
                             } else {
                                 todo!()
@@ -268,34 +278,82 @@ impl<'a> Codegen<'a> {
                     };
 
                     Ok(Some(value))
+                    //     AnyTypeEnum::IntType(_) => {
+                    //         let lhs = lhs.into_int_value();
+                    //         let rhs = rhs.into_int_value();
+
+                    //         if let Token::BasicOperator(op) = op {
+                    //             if op.is_arithmetic() {
+                    //                 match op {
+                    //                     BasicOperator::Add => {
+                    //                         self.builder.build_int_add(lhs, rhs, "").into()
+                    //                     }
+                    //                     BasicOperator::Sub => {
+                    //                         self.builder.build_int_sub(lhs, rhs, "").into()
+                    //                     }
+                    //                     BasicOperator::Mul => {
+                    //                         self.builder.build_int_mul(lhs, rhs, "").into()
+                    //                     }
+                    //                     BasicOperator::Div => {
+                    //                         self.builder.build_int_unsigned_div(lhs, rhs, "").into()
+                    //                     }
+                    //                     BasicOperator::Mod => {
+                    //                         self.builder.build_int_unsigned_rem(lhs, rhs, "").into()
+                    //                     }
+                    //                     _ => todo!(),
+                    //                 }
+                    //             } else if op.is_comparison() {
+                    //                 self.builder
+                    //                     .build_int_compare(
+                    //                         op.as_int_comparison_predicate(false),
+                    //                         lhs,
+                    //                         rhs,
+                    //                         "",
+                    //                     )
+                    //                     .into()
+                    //             } else {
+                    //                 todo!()
+                    //             }
+                    //         } else {
+                    //             todo!()
+                    //         }
+                    //     }
+                    //     _ => todo!(),
+                    // };
+
+                    // Ok(Some(value))
                 }
             }
             TaggedExprValue::LocalDefinition { ty, name, value } => {
                 let llvm_scope = self.llvm_scope(expr.fn_index, expr.scope_index.unwrap());
-                let llvm_ty = ty.as_llvm_any_type(self.module.get_context()).unwrap();
-                let ptr = match llvm_ty {
-                    AnyTypeEnum::IntType(ty) => self.builder.build_alloca(ty, name),
+
+                let ptr = match ty.as_ref() {
+                    LangType::IntType(ty) => {
+                        let (ty, _) = ty.as_llvm_int_type(self.module.get_context());
+                        let ptr = self.builder.build_alloca(ty, name);
+                        let value = self.compile_expr(llvm_func, value)?.unwrap();
+
+                        self.builder.build_store(ptr, value.into_int_value());
+                        ptr
+                    }
                     _ => todo!(),
                 };
+
                 llvm_scope
                     .stack_values
                     .borrow_mut()
                     .insert(name.clone(), ptr);
-                let llvm_value = self.compile_expr(llvm_func, value)?.unwrap();
-                match llvm_value {
-                    AnyValueEnum::IntValue(value) => self.builder.build_store(ptr, value),
-                    _ => todo!(),
-                };
+
                 Ok(None)
             }
             TaggedExprValue::IntegerLiteral(value) => {
-                let llvm_ty = expr
-                    .ty
-                    .as_llvm_any_type(self.module.get_context())
-                    .unwrap()
-                    .into_int_type();
-
-                Ok(Some(llvm_ty.const_int(*value, false).into()))
+                if let LangType::IntType(it) = expr.ty.as_ref() {
+                    let (ty, _) = it.as_llvm_int_type(self.module.get_context());
+                    let value = ty.const_int(*value, false);
+                    Ok(Some(value.into()))
+                } else {
+                    todo!()
+                }
             }
             TaggedExprValue::Ident(name) => {
                 let ptr = if let Some(ptr) = self.local_value(llvm_func, &scope, name) {
@@ -414,18 +472,20 @@ impl<'a> Codegen<'a> {
             .as_llvm_basic_type(self.module.get_context())
             .unwrap();
 
-        let initializer = match global.initializer.as_ref() {
-            Node::IntegerLiteral(value) => self
-                .module
-                .get_context()
-                .i64_type()
-                .const_int(*value, false)
-                .as_basic_value_enum(),
+        let ptr = self.module.add_global(llvm_ty, None, name);
+
+        match global.initializer.as_ref() {
+            Node::IntegerLiteral(value, extra) => {
+                let ty = self.pass1.pass0.integer_literal_extra_type(extra).unwrap();
+                let LangType::IntType(ty) = ty.as_ref() else {
+                    todo!();
+                };
+                let (ty, _) = ty.as_llvm_int_type(self.module.get_context());
+
+                ptr.set_initializer(&ty.const_int(*value, false).as_basic_value_enum());
+            }
             _ => todo!(),
         };
-
-        let ptr = self.module.add_global(llvm_ty, None, name);
-        ptr.set_initializer(&initializer);
 
         self.globals.borrow_mut().insert(name.to_owned(), ptr);
 
@@ -507,10 +567,15 @@ impl<'a> Codegen<'a> {
     }
 }
 
-pub fn compile_module<P: AsRef<Path>>(pass1: Pass1Program, name: &str, dst_obj: P) -> Result<(), CompilerError> {
+pub fn compile_module<P: AsRef<Path>>(
+    pass1: Pass1Program,
+    name: &str,
+    dst_obj: P,
+) -> Result<(), CompilerError> {
     let context = Context::create();
     let mut cg = Codegen::new(&pass1, name, &context);
     let result = cg.compile_module()?;
+    cg.module.print_to_stderr();
 
     let Ok(mut file) = File::create(dst_obj) else {
         todo!();

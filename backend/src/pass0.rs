@@ -3,11 +3,14 @@ use std::{collections::HashMap, rc::Rc};
 
 use ast::Node;
 
+use crate::LangIntType;
+
 use super::{CompilerError, LangType};
 
 #[derive(Debug)]
 pub struct Pass0Program {
     types: HashMap<String, Rc<LangType>>,
+    i64_type: Rc<LangType>,
     void_type: Rc<LangType>,
 }
 
@@ -19,22 +22,51 @@ impl Pass0Program {
     pub fn void_type(&self) -> Rc<LangType> {
         self.void_type.clone()
     }
+
+    pub fn i64_type(&self) -> Rc<LangType> {
+        self.i64_type.clone()
+    }
+
+    pub fn integer_literal_extra_type(&self, name: &str) -> Option<Rc<LangType>> {
+        if name.is_empty() {
+            Some(self.i64_type())
+        } else {
+            self.named_type(name)
+        }
+    }
 }
 
 pub fn pass0_program(_items: &[Rc<Node>]) -> Result<Pass0Program, CompilerError> {
     // TODO custom types
+    let i64_type = Rc::new(LangType::IntType(LangIntType::I64));
 
     Ok(Pass0Program {
         types: HashMap::from_iter([
-            ("i64".to_owned(), Rc::new(LangType::I64)),
-            ("i32".to_owned(), Rc::new(LangType::I32)),
-            ("i16".to_owned(), Rc::new(LangType::I16)),
-            ("i8".to_owned(), Rc::new(LangType::I8)),
-            ("u64".to_owned(), Rc::new(LangType::U64)),
-            ("u32".to_owned(), Rc::new(LangType::U32)),
-            ("u16".to_owned(), Rc::new(LangType::U16)),
-            ("u8".to_owned(), Rc::new(LangType::U8)),
+            ("i64".to_owned(), i64_type.clone()),
+            (
+                "i32".to_owned(),
+                Rc::new(LangType::IntType(LangIntType::I32)),
+            ),
+            (
+                "i16".to_owned(),
+                Rc::new(LangType::IntType(LangIntType::I16)),
+            ),
+            ("i8".to_owned(), Rc::new(LangType::IntType(LangIntType::I8))),
+            (
+                "u64".to_owned(),
+                Rc::new(LangType::IntType(LangIntType::U64)),
+            ),
+            (
+                "u32".to_owned(),
+                Rc::new(LangType::IntType(LangIntType::U32)),
+            ),
+            (
+                "u16".to_owned(),
+                Rc::new(LangType::IntType(LangIntType::U16)),
+            ),
+            ("u8".to_owned(), Rc::new(LangType::IntType(LangIntType::U8))),
         ]),
+        i64_type,
         void_type: Rc::new(LangType::Void),
     })
 }

@@ -62,7 +62,7 @@ pub enum Token {
     Punctuation(Punctuation),
     Keyword(Keyword),
     Ident(String),
-    IntegerLiteral(u64),
+    IntegerLiteral(u64, String),
 }
 
 impl Token {

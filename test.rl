@@ -1,24 +1,15 @@
-static V0: u64 = 65;
+extern fn putchar(v: i32) -> i32;
+extern fn getchar() -> i32;
 
-extern fn putchar(v: u64) -> u64;
+fn main() -> i64 {
+    let should_exit: i32 = 0i32;
+    while should_exit == 0i32 {
+        let ch: i32 = getchar();
+        putchar(ch);
 
-fn f1(x: u64) -> u64 {
-    V0 + x
-}
-
-fn main() -> u64 {
-    let x: u64 = 0;
-
-    while x != 26 {
-        putchar(f1(x));
-        x = x + 1;
+        if ch == 113i32 {
+            should_exit = 1i32;
+        }
     }
-    putchar(10);
-    while x != 0 {
-        x = x - 1;
-        putchar(f1(x));
-    }
-    putchar(10);
-
-    x
+    1
 }

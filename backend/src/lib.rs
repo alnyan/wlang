@@ -11,7 +11,8 @@ use ast::{Node, Token};
 pub use emit::compile_module;
 use inkwell::{
     context::ContextRef,
-    types::{AnyTypeEnum, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, IntType},
+    types::{AnyTypeEnum, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, IntType, BasicType},
+    values::IntValue,
 };
 pub use pass0::{pass0_program, Pass0Program};
 pub use pass1::{pass1_program, Pass1Program};
@@ -27,8 +28,7 @@ pub enum CompilerError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum LangType {
-    Void,
+pub enum LangIntType {
     U64,
     I64,
     U32,
@@ -37,6 +37,12 @@ pub enum LangType {
     I16,
     U8,
     I8,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LangType {
+    Void,
+    IntType(LangIntType),
 }
 
 #[derive(Debug)]
@@ -92,7 +98,7 @@ pub enum TaggedExprValue {
     Condition {
         condition: Rc<TaggedExpr>,
         if_true: Rc<TaggedExpr>,
-        if_false: Option<Rc<TaggedExpr>>
+        if_false: Option<Rc<TaggedExpr>>,
     },
     Loop {
         condition: Option<Rc<TaggedExpr>>,
@@ -100,7 +106,7 @@ pub enum TaggedExprValue {
     },
     IntegerLiteral(u64),
     Ident(String),
-    Call(Rc<TaggedExpr>, Vec<Rc<TaggedExpr>>)
+    Call(Rc<TaggedExpr>, Vec<Rc<TaggedExpr>>),
 }
 
 #[derive(Derivative)]
@@ -117,26 +123,13 @@ pub struct TaggedExpr {
 #[allow(clippy::match_like_matches_macro)]
 impl LangType {
     pub const fn is_integer(&self) -> bool {
-        match self {
-            Self::Void => false,
-            _ => true,
-        }
+        matches!(self, Self::IntType(_))
     }
 
-    pub fn as_llvm_int_type<'a>(&'a self, context: ContextRef<'a>) -> Option<IntType> {
+    pub fn as_basic_metadata_type<'a>(&self, context: ContextRef<'a>) -> BasicMetadataTypeEnum<'a> {
         match self {
-            Self::U64 | Self::I64 => Some(context.i64_type()),
+            Self::IntType(it) => it.as_llvm_basic_metadata_type(context),
             _ => todo!(),
-        }
-    }
-
-    pub fn as_basic_metadata_type<'a>(
-        &self,
-        context: ContextRef<'a>,
-    ) -> BasicMetadataTypeEnum<'a> {
-        match self {
-            Self::U64 | Self::I64 => BasicMetadataTypeEnum::IntType(context.i64_type()),
-            _ => todo!()
         }
     }
 
@@ -146,26 +139,51 @@ impl LangType {
         arg_types: &[BasicMetadataTypeEnum<'a>],
     ) -> FunctionType<'a> {
         match self {
-            Self::U64 => self
-                .as_llvm_int_type(context)
-                .unwrap()
-                .fn_type(arg_types, false),
+            Self::IntType(it) => it.as_llvm_basic_type(context).fn_type(arg_types, false),
             Self::Void => context.void_type().fn_type(arg_types, false),
-            _ => todo!(),
         }
     }
 
     pub fn as_llvm_basic_type<'a>(&self, context: ContextRef<'a>) -> Option<BasicTypeEnum<'a>> {
         match self {
-            Self::U64 => Some(BasicTypeEnum::IntType(context.i64_type())),
-            _ => todo!(),
+            Self::IntType(it) => Some(it.as_llvm_basic_type(context)),
+            Self::Void => None
+        }
+    }
+}
+
+impl LangIntType {
+    pub fn as_llvm_basic_type<'a>(&self, context: ContextRef<'a>) -> BasicTypeEnum<'a> {
+        match self {
+            Self::U64 | Self::I64 => context.i64_type().into(),
+            Self::U32 | Self::I32 => context.i32_type().into(),
+            Self::U16 | Self::I16 => context.i16_type().into(),
+            Self::U8 | Self::I8 => context.i8_type().into(),
         }
     }
 
-    pub fn as_llvm_any_type<'a>(&self, context: ContextRef<'a>) -> Option<AnyTypeEnum<'a>> {
+    pub fn as_llvm_basic_metadata_type<'a>(
+        &self,
+        context: ContextRef<'a>,
+    ) -> BasicMetadataTypeEnum<'a> {
         match self {
-            Self::U64 => Some(AnyTypeEnum::IntType(context.i64_type())),
-            _ => todo!(),
+            Self::U64 | Self::I64 => context.i64_type().into(),
+            Self::U32 | Self::I32 => context.i32_type().into(),
+            Self::U16 | Self::I16 => context.i16_type().into(),
+            Self::U8 | Self::I8 => context.i8_type().into(),
+        }
+    }
+
+    pub fn as_llvm_int_type<'a>(&self, context: ContextRef<'a>) -> (IntType<'a>, bool) {
+        match self {
+            Self::U64 => (context.i64_type(), false),
+            Self::I64 => (context.i64_type(), true),
+            Self::U32 => (context.i32_type(), false),
+            Self::I32 => (context.i32_type(), true),
+            Self::U16 => (context.i16_type(), false),
+            Self::I16 => (context.i16_type(), true),
+            Self::U8 => (context.i8_type(), false),
+            Self::I8 => (context.i8_type(), true),
         }
     }
 }

@@ -33,8 +33,28 @@ where
         Self { input }
     }
 
+    fn lex_number_extra(&mut self) -> Result<String, LexerError> {
+        let mut extra = String::new();
+
+        loop {
+            let Some(c) = self.input.peek()? else {
+                break;
+            };
+
+            if c.is_alphanumeric() {
+                self.input.next()?.unwrap();
+                extra.push(c);
+            } else {
+                break;
+            }
+        }
+
+        Ok(extra)
+    }
+
     fn lex_number(&mut self) -> Result<Token, LexerError> {
         let mut value = 0;
+        let mut extra = String::new();
 
         loop {
             let Some(c) = self.input.peek()? else {
@@ -42,7 +62,8 @@ where
             };
 
             if c.is_alphabetic() {
-                todo!();
+                extra = self.lex_number_extra()?;
+                break;
             } else if c.is_ascii_digit() {
                 self.input.next().unwrap();
                 value *= 10;
@@ -52,7 +73,7 @@ where
             }
         }
 
-        Ok(Token::IntegerLiteral(value))
+        Ok(Token::IntegerLiteral(value, extra))
     }
 
     fn lex_operator(&mut self) -> Result<Token, LexerError> {

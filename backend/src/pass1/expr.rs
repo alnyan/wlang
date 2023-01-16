@@ -325,8 +325,8 @@ pub fn pass1_expr(
                 value: TaggedExprValue::Statement(value),
             }))
         }
-        Node::IntegerLiteral(value) => Ok(Rc::new(TaggedExpr {
-            ty: pass1.pass0.named_type("u64").unwrap(),
+        Node::IntegerLiteral(value, extra) => Ok(Rc::new(TaggedExpr {
+            ty: pass1.pass0.integer_literal_extra_type(extra).unwrap(),
             ast_node: expr.clone(),
             scope_index: scope.borrow().index(),
             fn_index: scope.borrow().function_index(),
