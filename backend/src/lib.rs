@@ -54,7 +54,8 @@ pub struct FunctionImplementation {
 #[derive(Debug)]
 pub struct LangFunction {
     pub name: String,
-    pub body_node: Rc<Node>,
+    pub index: usize,
+    pub body_node: Option<Rc<Node>>,
     pub signature: FunctionSignature,
     pub implementation: Option<FunctionImplementation>,
 }

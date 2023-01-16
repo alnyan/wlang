@@ -110,10 +110,27 @@ pub fn pass1_program(
                 ret_type,
                 body,
             } => {
+                let index = pass1.functions.len();
                 let signature = pass1_function_signature(&pass1, args, ret_type)?;
                 pass1.functions.push(LangFunction {
                     name: name.clone(),
-                    body_node: body.clone(),
+                    index,
+                    body_node: Some(body.clone()),
+                    signature,
+                    implementation: None,
+                });
+            }
+            Node::ExternFunction {
+                name,
+                ret_type,
+                arg_types,
+            } => {
+                let index = pass1.functions.len();
+                let signature = pass1_function_signature(&pass1, arg_types, ret_type)?;
+                pass1.functions.push(LangFunction {
+                    name: name.clone(),
+                    index,
+                    body_node: None,
                     signature,
                     implementation: None,
                 });
@@ -136,10 +153,14 @@ pub fn pass1_program(
         .functions
         .iter()
         .enumerate()
-        .map(|(index, f)| pass1_function_impl(&pass1, index, &f.signature, &f.body_node))
+        .filter_map(|(index, f)| {
+            f.body_node.as_ref().map(|body| {
+                pass1_function_impl(&pass1, index, &f.signature, body).map(|r| (index, r))
+            })
+        })
         .collect::<Result<Vec<_>, _>>()?;
 
-    impls.into_iter().enumerate().for_each(|(index, i)| {
+    impls.into_iter().for_each(|(index, i)| {
         pass1.functions[index].implementation = Some(i);
     });
 

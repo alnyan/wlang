@@ -22,6 +22,7 @@ pub enum Keyword {
     Let,
     Const,
     Operator,
+    Extern,
     Fn,
 }
 
@@ -115,6 +116,7 @@ impl FromStr for Keyword {
             "fn" => Ok(Self::Fn),
             "let" => Ok(Self::Let),
             "const" => Ok(Self::Const),
+            "extern" => Ok(Self::Extern),
             _ => Err(())
         }
     }

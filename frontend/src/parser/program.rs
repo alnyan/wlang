@@ -96,6 +96,32 @@ def_parser!(pub parse_global_definition<S>(input: &mut S, is_const: bool) -> Rc<
     }))
 });
 
+def_parser!(pub parse_extern<S>(input: &mut S) -> Rc<Node> {
+    expect!(input, Token::Keyword(Keyword::Fn), "Fn".to_owned());
+    expect!(input, Token::Ident(name), "Identifier".to_owned());
+    expect!(input, Token::Punctuation(Punctuation::LParen), "LParen".to_owned());
+    let arg_types = parse_delimited(
+        input,
+        parse_typed,
+        Token::Punctuation(Punctuation::RParen),
+        Token::Punctuation(Punctuation::Comma))?;
+
+    let ret_type = if let Some(token) = input.peek()? && token == Token::BasicOperator(BasicOperator::Arrow) {
+        input.next()?.unwrap();
+        Some(parse_type(input)?)
+    } else {
+        None
+    };
+
+    expect!(input, Token::Punctuation(Punctuation::Semicolon), "Semicolon".to_owned());
+
+    Ok(Rc::new(Node::ExternFunction {
+        name,
+        arg_types,
+        ret_type
+    }))
+});
+
 def_parser!(pub parse_item<S>(input: &mut S) -> Rc<Node> {
     let Some(token) = input.next()? else {
         return Err(ParserError::UnexpectedEof);
@@ -103,6 +129,7 @@ def_parser!(pub parse_item<S>(input: &mut S) -> Rc<Node> {
 
     match token {
         Token::Keyword(Keyword::Fn) => parse_fn(input),
+        Token::Keyword(Keyword::Extern) => parse_extern(input),
         Token::Keyword(Keyword::Static) => parse_global_definition(input, false),
         Token::Keyword(Keyword::Const) => parse_global_definition(input, true),
         _ => Err(ParserError::UnexpectedToken(token, "Item: fn/static/const".to_owned()))

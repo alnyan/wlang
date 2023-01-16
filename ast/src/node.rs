@@ -29,4 +29,9 @@ pub enum Node {
         ty: Rc<Node>,
         value: Rc<Node>,
     },
+    ExternFunction {
+        name: String,
+        ret_type: Option<Rc<Node>>,
+        arg_types: Vec<(Rc<Node>, Rc<Node>)>
+    }
 }
