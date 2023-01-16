@@ -42,7 +42,7 @@ where
 
             if c.is_alphabetic() {
                 todo!();
-            } else if c.is_digit(10) {
+            } else if c.is_ascii_digit() {
                 self.input.next().unwrap();
                 value *= 10;
                 value += (c as u8 - b'0') as u64;
@@ -152,7 +152,7 @@ where
             }
         };
 
-        if c.is_digit(10) {
+        if c.is_ascii_digit() {
             self.lex_number()
         } else if c.is_alphabetic() || c == '_' {
             self.lex_keyword_or_ident()

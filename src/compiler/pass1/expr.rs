@@ -35,11 +35,16 @@ pub fn pass1_local_definition(
         return Err(CompilerError::TypeMismatchUnary(ty, value.ty.clone()));
     }
 
+    let scope_index = scope.borrow().index();
+    let fn_index = scope.borrow().function_index();
+
     scope.borrow_mut().add_local(
         def.name.as_str(),
         LocalValue {
             ty: ty.clone(),
             is_mutable,
+            scope_index,
+            fn_index
         },
     );
 
@@ -48,7 +53,7 @@ pub fn pass1_local_definition(
         ast_node: expr.clone(),
         scope_index: scope.borrow().index(),
         fn_index: scope.borrow().function_index(),
-        value: TaggedExprValue::LocalDefinition { ty, value },
+        value: TaggedExprValue::LocalDefinition { ty, name: def.name.clone(), value },
     }))
 }
 
@@ -141,11 +146,12 @@ pub fn pass1_block(
         todo!()
     };
 
+    let scope_index = block_scope.borrow().index();
     Ok(Rc::new(TaggedExpr {
         ty,
         ast_node: expr.clone(),
-        scope_index: scope.borrow().index(),
         fn_index: scope.borrow().function_index(),
+        scope_index,
         value: TaggedExprValue::Block(tagged_items),
     }))
 }
@@ -158,7 +164,7 @@ pub fn pass1_expr(
     match expr.as_ref() {
         Node::Ident(name) => {
             let ty = if let Some(local) = scope.borrow().local(name.as_str()) {
-                local.ty.clone()
+                local.ty
             } else if let Some(global) = pass1.globals.get(name.as_str()) {
                 global.ty.clone()
             } else {

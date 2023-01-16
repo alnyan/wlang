@@ -23,7 +23,7 @@ def_parser!(pub maybe_call<S>(input: &mut S, left: Rc<Node>) -> Rc<Node> {
 });
 
 def_parser!(pub parse_type<S>(input: &mut S) -> Rc<Node> {
-    expect!(input, Token::Ident(name));
+    expect!(input, Token::Ident(name), "Identifier".to_owned());
 
     if let Some(token) = input.peek()? && token == Token::BasicOperator(BasicOperator::Lt) {
         todo!()
@@ -33,15 +33,15 @@ def_parser!(pub parse_type<S>(input: &mut S) -> Rc<Node> {
 });
 
 def_parser!(pub parse_typed<S>(input: &mut S) -> (Rc<Node>, Rc<Node>) {
-    expect!(input, Token::Ident(name));
-    expect!(input, Token::BasicOperator(BasicOperator::Colon));
+    expect!(input, Token::Ident(name), "Identifier".to_owned());
+    expect!(input, Token::BasicOperator(BasicOperator::Colon), "Colon".to_owned());
     let ty = parse_type(input)?;
 
     Ok((Rc::new(Node::Ident(name)), ty))
 });
 
 def_parser!(pub parse_block<S>(input: &mut S) -> Rc<Node> {
-    expect!(input, Token::Punctuation(Punctuation::LBrace));
+    expect!(input, Token::Punctuation(Punctuation::LBrace), "LBrace".to_owned());
 
     let items = parse_many0(
         input,
@@ -52,8 +52,8 @@ def_parser!(pub parse_block<S>(input: &mut S) -> Rc<Node> {
 });
 
 def_parser!(pub parse_fn<S>(input: &mut S) -> Rc<Node> {
-    expect!(input, Token::Ident(name));
-    expect!(input, Token::Punctuation(Punctuation::LParen));
+    expect!(input, Token::Ident(name), "Identifier".to_owned());
+    expect!(input, Token::Punctuation(Punctuation::LParen), "LParen".to_owned());
     let args = parse_delimited(
         input,
         parse_typed,
@@ -78,12 +78,12 @@ def_parser!(pub parse_fn<S>(input: &mut S) -> Rc<Node> {
 });
 
 def_parser!(pub parse_global_definition<S>(input: &mut S, is_const: bool) -> Rc<Node> {
-    expect!(input, Token::Ident(name));
-    expect!(input, Token::BasicOperator(BasicOperator::Colon));
+    expect!(input, Token::Ident(name), "Identifier".to_owned());
+    expect!(input, Token::BasicOperator(BasicOperator::Colon), "Colon".to_owned());
     let ty = parse_type(input)?;
-    expect!(input, Token::BasicOperator(BasicOperator::Assign));
+    expect!(input, Token::BasicOperator(BasicOperator::Assign), "Assign".to_owned());
     let value = parse_expr(input)?;
-    expect!(input, Token::Punctuation(Punctuation::Semicolon));
+    expect!(input, Token::Punctuation(Punctuation::Semicolon), "Semicolon".to_owned());
 
     Ok(Rc::new(Node::GlobalDefinition(GlobalDefinition {
         is_const,
@@ -102,7 +102,7 @@ def_parser!(pub parse_item<S>(input: &mut S) -> Rc<Node> {
         Token::Keyword(Keyword::Fn) => parse_fn(input),
         Token::Keyword(Keyword::Static) => parse_global_definition(input, false),
         Token::Keyword(Keyword::Const) => parse_global_definition(input, true),
-        _ => Err(ParserError::UnexpectedToken(token))
+        _ => Err(ParserError::UnexpectedToken(token, "Item: fn/static/const".to_owned()))
     }
 });
 

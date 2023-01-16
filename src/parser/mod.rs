@@ -5,7 +5,7 @@ use crate::lexer::{token::Token, LexerError};
 #[derive(Debug, Clone)]
 pub enum ParserError {
     UnexpectedEof,
-    UnexpectedToken(Token),
+    UnexpectedToken(Token, String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -47,13 +47,13 @@ pub enum Node {
 }
 
 macro_rules! expect {
-    ($input:expr, $pattern:pat) => {
+    ($input:expr, $pattern:pat, $msg:expr) => {
         let Some(_token) = $crate::input::Input::next($input)? else {
                             return Err($crate::parser::ParserError::UnexpectedEof);
                         };
 
         let $pattern = _token else {
-                            return Err($crate::parser::ParserError::UnexpectedToken(_token));
+                            return Err($crate::parser::ParserError::UnexpectedToken(_token, $msg));
                         };
     };
 }

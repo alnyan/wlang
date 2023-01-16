@@ -1,15 +1,18 @@
-use std::{rc::Rc, cell::RefCell};
+use std::{cell::RefCell, rc::Rc};
 
+pub mod emit;
 pub mod pass0;
 pub mod pass1;
-pub mod emit;
 
-use inkwell::{types::Type, context::Context};
+pub use emit::compile_module;
+use inkwell::{
+    context::ContextRef,
+    types::{AnyTypeEnum, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, IntType},
+};
 pub use pass0::{pass0_program, Pass0Program};
 pub use pass1::{pass1_program, Pass1Program};
-pub use emit::compile_module;
 
-use crate::{parser::Node, lexer::token::Token};
+use crate::{lexer::token::Token, parser::Node};
 
 use self::pass1::Scope;
 
@@ -45,19 +48,22 @@ pub struct LangFunction {
     pub name: String,
     pub signature: FunctionSignature,
     pub body: Rc<TaggedExpr>,
-    pub scope: Rc<RefCell<dyn Scope>>
+    pub scope: Rc<RefCell<dyn Scope>>,
 }
 
 #[derive(Debug)]
 pub struct GlobalValue {
     pub ty: Rc<LangType>,
-    pub is_const: bool
+    pub is_const: bool,
+    pub initializer: Rc<Node>,
 }
 
 #[derive(Debug, Clone)]
 pub struct LocalValue {
     pub ty: Rc<LangType>,
-    pub is_mutable: bool
+    pub is_mutable: bool,
+    pub scope_index: Option<usize>,
+    pub fn_index: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -65,16 +71,17 @@ pub enum TaggedExprValue {
     Binary {
         op: Token,
         lhs: Rc<TaggedExpr>,
-        rhs: Rc<TaggedExpr>
+        rhs: Rc<TaggedExpr>,
     },
     Block(Vec<Rc<TaggedExpr>>),
     Statement(Rc<TaggedExpr>),
-    LocalDefinition{
+    LocalDefinition {
         ty: Rc<LangType>,
-        value: Rc<TaggedExpr>
+        name: String,
+        value: Rc<TaggedExpr>,
     },
     IntegerLiteral(u64),
-    Ident(String)
+    Ident(String),
 }
 
 #[derive(Derivative)]
@@ -83,11 +90,12 @@ pub struct TaggedExpr {
     pub ty: Rc<LangType>,
     pub fn_index: usize,
     pub scope_index: Option<usize>,
-    #[derivative(Debug="ignore")]
+    #[derivative(Debug = "ignore")]
     pub ast_node: Rc<Node>,
-    pub value: TaggedExprValue
+    pub value: TaggedExprValue,
 }
 
+#[allow(clippy::match_like_matches_macro)]
 impl LangType {
     pub const fn is_integer(&self) -> bool {
         match self {
@@ -96,12 +104,46 @@ impl LangType {
         }
     }
 
-    pub fn to_llvm_type(&self, context: &Context) -> Option<Type> {
+    pub fn as_llvm_int_type<'a>(&'a self, context: ContextRef<'a>) -> Option<IntType> {
         match self {
-            Self::Void => Some(context.void_type()),
-            Self::U64 => Some(context.i64_type()),
-            Self::I64 => Some(context.i64_type()),
-            _ => todo!()
+            Self::U64 | Self::I64 => Some(context.i64_type()),
+            _ => todo!(),
+        }
+    }
+
+    pub fn as_basic_metadata_type<'a>(
+        &self,
+        _context: ContextRef<'a>,
+    ) -> BasicMetadataTypeEnum<'a> {
+        todo!()
+    }
+
+    pub fn make_llvm_function_type<'a>(
+        &'a self,
+        context: ContextRef<'a>,
+        arg_types: &[BasicMetadataTypeEnum<'a>],
+    ) -> FunctionType<'a> {
+        match self {
+            Self::U64 => self
+                .as_llvm_int_type(context)
+                .unwrap()
+                .fn_type(arg_types, false),
+            Self::Void => context.void_type().fn_type(arg_types, false),
+            _ => todo!(),
+        }
+    }
+
+    pub fn as_llvm_basic_type<'a>(&self, context: ContextRef<'a>) -> Option<BasicTypeEnum<'a>> {
+        match self {
+            Self::U64 => Some(BasicTypeEnum::IntType(context.i64_type())),
+            _ => todo!(),
+        }
+    }
+
+    pub fn as_llvm_any_type<'a>(&self, context: ContextRef<'a>) -> Option<AnyTypeEnum<'a>> {
+        match self {
+            Self::U64 => Some(AnyTypeEnum::IntType(context.i64_type())),
+            _ => todo!(),
         }
     }
 }

@@ -26,7 +26,7 @@ def_parser!(
             if token == end {
                 break;
             } else if token != delim {
-                return Err(ParserError::UnexpectedToken(token));
+                return Err(ParserError::UnexpectedToken(token, format!("{delim:?}")));
             }
         }
 

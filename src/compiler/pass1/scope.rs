@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, fmt::Debug};
+use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
 
 use crate::compiler::{LangType, LocalValue};
 
@@ -13,21 +13,28 @@ pub struct FunctionScope {
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct BlockScope {
-    #[derivative(Debug="ignore")]
+    #[derivative(Debug = "ignore")]
     parent: Rc<RefCell<dyn Scope>>,
     locals: HashMap<String, LocalValue>,
     index: usize,
 }
 
 pub trait Scope: Debug {
+    // Variables
     fn local(&self, name: &str) -> Option<LocalValue>;
     fn add_local(&mut self, name: &str, ty: LocalValue);
+
+    // Function signature
     fn function_return_type(&self) -> Rc<LangType>;
     fn is_upper(&self) -> bool;
+
+    // Parent-child relations
     fn add_scope(&mut self, parent: Rc<RefCell<dyn Scope>>) -> Rc<RefCell<dyn Scope>>;
+    fn scope(&self, index: usize) -> Option<Rc<RefCell<dyn Scope>>>;
+
+    // Stored in tagged nodes to reenter the scopes later
     fn index(&self) -> Option<usize>;
     fn function_index(&self) -> usize;
-    fn scope(&self, index: usize) -> Option<Rc<RefCell<dyn Scope>>>;
 }
 
 impl BlockScope {
@@ -102,8 +109,8 @@ impl Scope for FunctionScope {
         self.args.get(name).cloned()
     }
 
-    fn add_local(&mut self, name: &str, ty: LocalValue) {
-        panic!()
+    fn add_local(&mut self, _name: &str, _ty: LocalValue) {
+        panic!("Tried to add a local to function")
     }
 
     fn add_scope(&mut self, parent: Rc<RefCell<dyn Scope>>) -> Rc<RefCell<dyn Scope>> {
@@ -114,11 +121,11 @@ impl Scope for FunctionScope {
     }
 
     fn scope(&self, index: usize) -> Option<Rc<RefCell<dyn Scope>>> {
-        todo!()
+        self.children.get(index).cloned()
     }
 
     fn function_return_type(&self) -> Rc<LangType> {
-        todo!()
+        self.return_type.clone()
     }
 
     fn is_upper(&self) -> bool {

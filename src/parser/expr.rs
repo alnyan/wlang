@@ -3,6 +3,7 @@ use std::rc::Rc;
 use crate::lexer::token::{BasicOperator, Keyword, Punctuation, Token};
 
 use super::{
+    combinator::parse_many0,
     program::{maybe_call, parse_type},
     LocalDefinition, Node, ParserError,
 };
@@ -20,10 +21,10 @@ fn precedence(op: &Token) -> u32 {
 
 def_parser!(pub parse_local_definition<S>(input: &mut S) -> Rc<Node> {
     // TODO maybe mut
-    expect!(input, Token::Ident(name));
-    expect!(input, Token::BasicOperator(BasicOperator::Colon));
+    expect!(input, Token::Ident(name), "Identifier".to_owned());
+    expect!(input, Token::BasicOperator(BasicOperator::Colon), "Colon".to_owned());
     let ty = parse_type(input)?;
-    expect!(input, Token::BasicOperator(BasicOperator::Assign));
+    expect!(input, Token::BasicOperator(BasicOperator::Assign), "Assign".to_owned());
     let value = parse_expr(input)?;
 
     Ok(Rc::new(Node::LocalDefinition(LocalDefinition {
@@ -43,7 +44,15 @@ def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
         Token::Ident(name) => Ok(Rc::new(Node::Ident(name))),
         Token::IntegerLiteral(value) => Ok(Rc::new(Node::IntegerLiteral(value))),
         Token::Keyword(Keyword::Let) => parse_local_definition(input),
-        _ => Err(ParserError::UnexpectedToken(token))
+        Token::Punctuation(Punctuation::LBrace) => {
+            let items = parse_many0(
+                input,
+                parse_statement_expr,
+                Token::Punctuation(Punctuation::RBrace))?;
+
+            Ok(Rc::new(Node::Block(items)))
+        },
+        _ => Err(ParserError::UnexpectedToken(token, "Ident/IntegerLiteral/Keyword/LBrace".to_owned()))
     }
 });
 

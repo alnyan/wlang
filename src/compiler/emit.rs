@@ -1,159 +1,265 @@
-use std::rc::Rc;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use inkwell::{
-    basic_block::BasicBlock, builder::Builder, context::Context, module::Module, values::Value,
+    builder::Builder,
+    context::Context,
+    module::{Linkage, Module},
+    types::AnyTypeEnum,
+    values::{AnyValueEnum, BasicValue, GlobalValue as LlvmGlobalValue, PointerValue},
 };
 
 use crate::{
     lexer::token::{BasicOperator, Token},
-    parser::{Node, Function, GlobalDefinition},
+    parser::Node,
 };
 
-use super::{CompilerError, Pass1Program};
+use super::{
+    pass1::Scope, CompilerError, GlobalValue, LangFunction, Pass1Program, TaggedExpr,
+    TaggedExprValue,
+};
 
-pub struct Codegen {
-    context: Context,
-    module: Module,
-    builder: Builder,
-    pass1: Pass1Program,
+pub struct Codegen<'a> {
+    module: Module<'a>,
+    builder: Builder<'a>,
+    pass1: &'a Pass1Program,
+    scopes: RefCell<HashMap<(usize, usize), Rc<LlvmScope<'a>>>>,
+    globals: RefCell<HashMap<String, LlvmGlobalValue<'a>>>,
 }
 
-pub fn compile_basic_binary(
-    cg: &mut Codegen,
-    bb: &mut BasicBlock,
-    op: BasicOperator,
-    lhs: &Rc<Node>,
-    rhs: &Rc<Node>,
-) -> Result<Option<Value>, CompilerError> {
-    todo!()
+pub struct LlvmScope<'a> {
+    _pass1_scope: Rc<RefCell<dyn Scope>>,
+    stack_values: RefCell<HashMap<String, PointerValue<'a>>>,
 }
 
-pub fn compile_binary(
-    cg: &mut Codegen,
-    bb: &mut BasicBlock,
-    op: &Token,
-    lhs: &Rc<Node>,
-    rhs: &Rc<Node>,
-) -> Result<Option<Value>, CompilerError> {
-    match op {
-        Token::BasicOperator(basic) => compile_basic_binary(cg, bb, *basic, lhs, rhs),
-        _ => todo!(),
-    }
-}
+impl<'a> Codegen<'a> {
+    pub fn new(pass1: &'a Pass1Program, name: &str, context: &'a Context) -> Self {
+        let module = context.create_module(name);
+        let builder = context.create_builder();
 
-pub fn compile_expr(
-    cg: &mut Codegen,
-    bb: &mut BasicBlock,
-    expr: &Rc<Node>,
-) -> Result<Option<Value>, CompilerError> {
-    match expr.as_ref() {
-        Node::Block(items) => {
-            for (i, item) in items.iter().enumerate() {
-                let value = compile_expr(cg, bb, item)?;
-
-                if i == items.len() - 1 {
-                    return Ok(value);
-                }
-            }
-
-            Ok(None)
+        Self {
+            module,
+            builder,
+            pass1,
+            scopes: RefCell::new(HashMap::new()),
+            globals: RefCell::new(HashMap::new()),
         }
-        Node::IntegerLiteral(value) => Ok(Some(cg.context.i64_type().const_int(*value, false))),
-        Node::Call(target, args) => {
-            let llvm_args = args
-                .iter()
-                .map(|arg| compile_expr(cg, bb, arg))
-                .collect::<Result<Vec<_>, _>>()?;
-            let llvm_args = llvm_args
-                .into_iter()
-                .map(Option::unwrap)
-                .collect::<Vec<_>>();
+    }
 
-            // let llvm_target = compile_expr(cg, bb, target)?;
-            if let Node::Ident(name) = target.as_ref() {
-                let llvm_func = cg
-                    .module
-                    .get_function(name)
-                    .unwrap_or_else(|| panic!("Undefined function: {}", name));
-                Ok(Some(cg.builder.build_call(&llvm_func, &llvm_args, name)))
+    pub fn scope(
+        &self,
+        fn_index: usize,
+        scope_index: Option<usize>,
+    ) -> Option<Rc<RefCell<dyn Scope>>> {
+        let func_scope = self.pass1.functions[fn_index].scope.clone();
+        if let Some(scope_index) = scope_index {
+            func_scope.borrow().scope(scope_index)
+        } else {
+            Some(func_scope)
+        }
+    }
+    pub fn compile_function(&mut self, func: &'a LangFunction) -> Result<(), CompilerError> {
+        assert_eq!(func.signature.arg_types, vec![]);
+
+        let llvm_func_ty = func
+            .signature
+            .return_type
+            .make_llvm_function_type(self.module.get_context(), &[]);
+        let llvm_func = self
+            .module
+            .add_function(&func.name, llvm_func_ty, Some(Linkage::External));
+
+        let llvm_basic_block = self
+            .module
+            .get_context()
+            .append_basic_block(llvm_func, "entry");
+        self.builder.position_at_end(llvm_basic_block);
+        let return_value = self.compile_expr(&func.body)?;
+
+        if let Some(return_value) = return_value {
+            match return_value {
+                AnyValueEnum::IntValue(value) => {
+                    self.builder.build_return(Some(&value));
+                }
+                _ => todo!(),
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn compile_expr(
+        &self,
+        expr: &'a Rc<TaggedExpr>,
+    ) -> Result<Option<AnyValueEnum>, CompilerError> {
+        let scope = self.scope(expr.fn_index, expr.scope_index).unwrap();
+        match &expr.value {
+            TaggedExprValue::Block(items) => {
+                let scope = Rc::new(LlvmScope {
+                    _pass1_scope: scope,
+                    stack_values: RefCell::new(HashMap::new()),
+                });
+
+                self.scopes
+                    .borrow_mut()
+                    .insert((expr.fn_index, expr.scope_index.unwrap()), scope);
+
+                for (i, item) in items.iter().enumerate() {
+                    let value = self.compile_expr(item)?;
+
+                    if i == items.len() - 1 {
+                        return Ok(value);
+                    }
+                }
+
+                Ok(None)
+            }
+            TaggedExprValue::Statement(inner) => {
+                self.compile_expr(inner)?;
+                Ok(None)
+            }
+            TaggedExprValue::Binary { op, lhs, rhs } => {
+                let llvm_ty = expr.ty.as_llvm_any_type(self.module.get_context()).unwrap();
+                let lhs = self.compile_expr(lhs)?.unwrap();
+                let rhs = self.compile_expr(rhs)?.unwrap();
+
+                let value = match op {
+                    Token::BasicOperator(BasicOperator::Add) => match llvm_ty {
+                        AnyTypeEnum::IntType(_) => {
+                            assert!(lhs.is_int_value());
+                            assert!(rhs.is_int_value());
+
+                            self.builder
+                                .build_int_add(lhs.into_int_value(), rhs.into_int_value(), "")
+                                .into()
+                        }
+                        _ => todo!(),
+                    },
+                    _ => todo!(),
+                };
+
+                Ok(Some(value))
+            }
+            TaggedExprValue::LocalDefinition { ty, name, value } => {
+                let llvm_scope = self.llvm_scope(expr.fn_index, expr.scope_index.unwrap());
+                let llvm_ty = ty.as_llvm_any_type(self.module.get_context()).unwrap();
+                let ptr = match llvm_ty {
+                    AnyTypeEnum::IntType(ty) => self.builder.build_alloca(ty, name),
+                    _ => todo!(),
+                };
+                llvm_scope
+                    .stack_values
+                    .borrow_mut()
+                    .insert(name.clone(), ptr);
+                let llvm_value = self.compile_expr(value)?.unwrap();
+                match llvm_value {
+                    AnyValueEnum::IntValue(value) => self.builder.build_store(ptr, value),
+                    _ => todo!(),
+                };
+                Ok(None)
+            }
+            TaggedExprValue::IntegerLiteral(value) => {
+                let llvm_ty = expr
+                    .ty
+                    .as_llvm_any_type(self.module.get_context())
+                    .unwrap()
+                    .into_int_type();
+
+                Ok(Some(llvm_ty.const_int(*value, false).into()))
+            }
+            TaggedExprValue::Ident(name) => {
+                let ptr = if let Some(ptr) = self.local_value(&scope, name) {
+                    ptr
+                } else if let Some(gv) = self.globals.borrow().get(name) {
+                    gv.as_pointer_value()
+                } else {
+                    todo!()
+                };
+
+                Ok(Some(self.builder.build_load(ptr, "").into()))
+            } // _ => todo!("{:?}", expr),
+        }
+    }
+
+    fn compile_global_definition(
+        &self,
+        name: &str,
+        global: &GlobalValue,
+    ) -> Result<(), CompilerError> {
+        let llvm_ty = global
+            .ty
+            .as_llvm_basic_type(self.module.get_context())
+            .unwrap();
+
+        let initializer = match global.initializer.as_ref() {
+            Node::IntegerLiteral(value) => self
+                .module
+                .get_context()
+                .i64_type()
+                .const_int(*value, false)
+                .as_basic_value_enum(),
+            _ => todo!(),
+        };
+
+        let ptr = self.module.add_global(llvm_ty, None, name);
+        ptr.set_initializer(&initializer);
+
+        self.globals.borrow_mut().insert(name.to_owned(), ptr);
+
+        Ok(())
+    }
+
+    pub fn compile_module(&mut self) -> Result<(), CompilerError> {
+        for (name, global) in self.pass1.globals.iter() {
+            self.compile_global_definition(name, global)?;
+        }
+
+        for func in self.pass1.functions.iter() {
+            self.compile_function(func)?;
+        }
+
+        self.module.print_to_stderr();
+
+        let ee = self.module.create_interpreter_execution_engine().unwrap();
+        let fun = self.module.get_function("main").unwrap();
+        let result = unsafe { ee.run_function(fun, &[]) };
+        dbg!(result.as_int(false));
+
+        Ok(())
+    }
+
+    fn llvm_scope(&self, fn_index: usize, scope_index: usize) -> Rc<LlvmScope<'a>> {
+        self.scopes
+            .borrow()
+            .get(&(fn_index, scope_index))
+            .cloned()
+            .unwrap()
+    }
+
+    fn local_value(&self, scope: &Rc<RefCell<dyn Scope>>, name: &str) -> Option<PointerValue<'a>> {
+        if let Some(local) = scope.borrow().local(name) {
+            if let Some(scope_index) = local.scope_index {
+                // Local variable
+                let llvm_scope = self
+                    .scopes
+                    .borrow()
+                    .get(&(local.fn_index, scope_index))
+                    .unwrap()
+                    .clone();
+                let stack_values = llvm_scope.stack_values.borrow();
+
+                stack_values.get(name).cloned()
             } else {
+                // Argument
                 todo!()
             }
+        } else {
+            None
         }
-        Node::Statement(inner) => {
-            compile_expr(cg, bb, inner)?;
-            Ok(None)
-        }
-        Node::Binary(op, lhs, rhs) => compile_binary(cg, bb, op, lhs, rhs),
-        _ => todo!(),
     }
 }
 
-pub fn compile_function(cg: &mut Codegen, func: &Function) -> Result<(), CompilerError> {
-    assert_eq!(func.ret_type, None);
-    assert_eq!(func.args, vec![]);
-
-    let void_type = cg.context.void_type();
-    let mut llvm_args = vec![];
-    let llvm_ret_type = void_type.fn_type(&mut llvm_args, false);
-    let llvm_func = cg.module.add_function(&func.name, llvm_ret_type);
-
-    let mut llvm_basic_block = cg.context.append_basic_block(&llvm_func, "entry");
-    cg.builder.position_at_end(&mut llvm_basic_block);
-    let return_value = compile_expr(cg, &mut llvm_basic_block, &func.body)?;
-    cg.builder.build_return(return_value);
-
-    Ok(())
-}
-
-pub fn compile_global_definition(cg: &mut Codegen, def: &GlobalDefinition) -> Result<(), CompilerError> {
-    // cg.module.add_global(type_, init_value, name);
-    todo!()
-}
-
-pub fn compile_item(cg: &mut Codegen, item: &Rc<Node>) -> Result<(), CompilerError> {
-    match item.as_ref() {
-        Node::GlobalDefinition(def) => compile_global_definition(cg, def),
-        Node::Function(func) => compile_function(cg, func),
-        _ => todo!(),
-    }
-}
-
-pub fn compile_module(pass1: Pass1Program, name: &str, items: &[Rc<Node>]) -> Result<(), CompilerError> {
+pub fn compile_module(pass1: Pass1Program, name: &str) -> Result<(), CompilerError> {
     let context = Context::create();
-    let module = context.create_module(name);
-    let builder = context.create_builder();
-
-    let mut codegen = Codegen {
-        context,
-        module,
-        builder,
-        pass1
-    };
-
-    codegen.module.add_function(
-        "getchar",
-        codegen.context.i8_type().fn_type(&mut vec![], false),
-    );
-    codegen.module.add_function(
-        "putchar",
-        codegen
-            .context
-            .i8_type()
-            .fn_type(&mut vec![codegen.context.i8_type()], false),
-    );
-
-    for item in items {
-        compile_item(&mut codegen, item)?;
-    }
-
-    eprintln!("Code dump:");
-    eprintln!();
-
-    let ee = codegen.module.create_execution_engine(false).unwrap();
-    let llvm_main = codegen.module.get_function("main").unwrap();
-
-    ee.run_function(llvm_main);
-
-    Ok(())
+    let mut cg = Codegen::new(&pass1, name, &context);
+    cg.compile_module()
 }

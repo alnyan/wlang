@@ -58,10 +58,7 @@ pub enum Token {
 
 impl Token {
     pub const fn is_operator(&self) -> bool {
-        match self {
-            Self::BasicOperator(_) | Self::CustomOperator(_) => true,
-            _ => false
-        }
+        matches!(self, Self::BasicOperator(_) | Self::CustomOperator(_))
     }
 }
 

@@ -22,6 +22,5 @@ fn main() {
     // Setup context
     let pass0 = compiler::pass0_program(&ast).unwrap();
     let pass1 = compiler::pass1_program(pass0, &ast).unwrap();
-    dbg!(pass1);
-    // compiler::compile_module(pass1, "main", &ast).unwrap();
+    compiler::compile_module(pass1, "main").unwrap();
 }

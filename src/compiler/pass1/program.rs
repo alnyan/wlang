@@ -38,6 +38,8 @@ pub fn pass1_function(
             LocalValue {
                 ty,
                 is_mutable: false,
+                fn_index: index,
+                scope_index: None
             },
         ));
     }
@@ -75,10 +77,13 @@ pub fn pass1_global_definition(
     pass1: &Pass1Program,
     is_const: bool,
     ty: &Rc<Node>,
+    initializer: Rc<Node>,
 ) -> Result<GlobalValue, CompilerError> {
     let ty = pass1_type(pass1, ty)?;
 
-    Ok(GlobalValue { ty, is_const })
+    // TODO check that it's a const value
+
+    Ok(GlobalValue { ty, is_const, initializer })
 }
 
 pub fn pass1_program(
@@ -110,11 +115,11 @@ pub fn pass1_program(
                 )?);
             }
             Node::GlobalDefinition(GlobalDefinition {
-                is_const, name, ty, ..
+                is_const, name, ty, value
             }) => {
                 pass1.globals.insert(
                     name.clone(),
-                    pass1_global_definition(&pass1, *is_const, ty)?,
+                    pass1_global_definition(&pass1, *is_const, ty, value.clone())?,
                 );
             }
             _ => todo!(),
