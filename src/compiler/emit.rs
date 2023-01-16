@@ -5,7 +5,10 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     types::AnyTypeEnum,
-    values::{AnyValueEnum, BasicValue, GlobalValue as LlvmGlobalValue, PointerValue},
+    values::{
+        AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, FunctionValue,
+        GlobalValue as LlvmGlobalValue, PointerValue, BasicValueEnum,
+    },
 };
 
 use crate::{
@@ -29,6 +32,16 @@ pub struct Codegen<'a> {
 pub struct LlvmScope<'a> {
     _pass1_scope: Rc<RefCell<dyn Scope>>,
     stack_values: RefCell<HashMap<String, PointerValue<'a>>>,
+}
+
+pub struct LlvmFunctionScope<'a> {
+    func: FunctionValue<'a>,
+    param_mapping: HashMap<String, usize>,
+}
+
+pub enum IdentValue<'a> {
+    Variable(PointerValue<'a>),
+    Argument(BasicValueEnum<'a>)
 }
 
 impl<'a> Codegen<'a> {
@@ -58,22 +71,31 @@ impl<'a> Codegen<'a> {
         }
     }
     pub fn compile_function(&mut self, func: &'a LangFunction) -> Result<(), CompilerError> {
-        assert_eq!(func.signature.arg_types, vec![]);
+        let llvm_arg_types = func
+            .signature
+            .arg_types
+            .iter()
+            .map(|(_, ty)| ty.as_basic_metadata_type(self.module.get_context()))
+            .collect::<Vec<_>>();
 
         let llvm_func_ty = func
             .signature
             .return_type
-            .make_llvm_function_type(self.module.get_context(), &[]);
+            .make_llvm_function_type(self.module.get_context(), &llvm_arg_types);
         let llvm_func = self
             .module
             .add_function(&func.name, llvm_func_ty, Some(Linkage::External));
+        let llvm_func_scope = LlvmFunctionScope {
+            func: llvm_func,
+            param_mapping: HashMap::from_iter(func.signature.arg_types.iter().map(|(k, v)| k).cloned().enumerate().map(|(k, v)| (v, k)))
+        };
 
         let llvm_basic_block = self
             .module
             .get_context()
             .append_basic_block(llvm_func, "entry");
         self.builder.position_at_end(llvm_basic_block);
-        let return_value = self.compile_expr(&func.body)?;
+        let return_value = self.compile_expr(&llvm_func_scope, &func.body)?;
 
         if let Some(return_value) = return_value {
             match return_value {
@@ -87,8 +109,33 @@ impl<'a> Codegen<'a> {
         Ok(())
     }
 
+    pub fn compile_simple_call(
+        &self,
+        llvm_func_scope: &LlvmFunctionScope<'a>,
+        name: &str,
+        args: &'a [Rc<TaggedExpr>],
+    ) -> Result<Option<AnyValueEnum>, CompilerError> {
+        let llvm_func = self.module.get_function(name).unwrap();
+        let compiled_args = args
+            .iter()
+            .map(|arg| {
+                self.compile_expr(llvm_func_scope, arg)
+                    .map(Option::unwrap)
+                    .map(|arg| match arg {
+                        AnyValueEnum::IntValue(value) => BasicMetadataValueEnum::IntValue(value),
+                        _ => todo!(),
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let result = self.builder.build_call(llvm_func, &compiled_args, "");
+
+        Ok(Some(result.as_any_value_enum()))
+    }
+
     pub fn compile_expr(
         &self,
+        llvm_func: &LlvmFunctionScope<'a>,
         expr: &'a Rc<TaggedExpr>,
     ) -> Result<Option<AnyValueEnum>, CompilerError> {
         let scope = self.scope(expr.fn_index, expr.scope_index).unwrap();
@@ -104,7 +151,7 @@ impl<'a> Codegen<'a> {
                     .insert((expr.fn_index, expr.scope_index.unwrap()), scope);
 
                 for (i, item) in items.iter().enumerate() {
-                    let value = self.compile_expr(item)?;
+                    let value = self.compile_expr(llvm_func, item)?;
 
                     if i == items.len() - 1 {
                         return Ok(value);
@@ -114,13 +161,13 @@ impl<'a> Codegen<'a> {
                 Ok(None)
             }
             TaggedExprValue::Statement(inner) => {
-                self.compile_expr(inner)?;
+                self.compile_expr(llvm_func, inner)?;
                 Ok(None)
             }
             TaggedExprValue::Binary { op, lhs, rhs } => {
                 let llvm_ty = expr.ty.as_llvm_any_type(self.module.get_context()).unwrap();
-                let lhs = self.compile_expr(lhs)?.unwrap();
-                let rhs = self.compile_expr(rhs)?.unwrap();
+                let lhs = self.compile_expr(llvm_func, lhs)?.unwrap();
+                let rhs = self.compile_expr(llvm_func, rhs)?.unwrap();
 
                 let value = match op {
                     Token::BasicOperator(BasicOperator::Add) => match llvm_ty {
@@ -150,7 +197,7 @@ impl<'a> Codegen<'a> {
                     .stack_values
                     .borrow_mut()
                     .insert(name.clone(), ptr);
-                let llvm_value = self.compile_expr(value)?.unwrap();
+                let llvm_value = self.compile_expr(llvm_func, value)?.unwrap();
                 match llvm_value {
                     AnyValueEnum::IntValue(value) => self.builder.build_store(ptr, value),
                     _ => todo!(),
@@ -167,16 +214,23 @@ impl<'a> Codegen<'a> {
                 Ok(Some(llvm_ty.const_int(*value, false).into()))
             }
             TaggedExprValue::Ident(name) => {
-                let ptr = if let Some(ptr) = self.local_value(&scope, name) {
+                let ptr = if let Some(ptr) = self.local_value(llvm_func, &scope, name) {
                     ptr
                 } else if let Some(gv) = self.globals.borrow().get(name) {
-                    gv.as_pointer_value()
+                    IdentValue::Variable(gv.as_pointer_value())
                 } else {
                     todo!()
                 };
 
-                Ok(Some(self.builder.build_load(ptr, "").into()))
+                Ok(Some(match ptr {
+                    IdentValue::Variable(ptr) => self.builder.build_load(ptr, "").into(),
+                    IdentValue::Argument(val) => val.into()
+                }))
             } // _ => todo!("{:?}", expr),
+            TaggedExprValue::Call(callee, args) => match &callee.value {
+                TaggedExprValue::Ident(name) => self.compile_simple_call(llvm_func, name, args),
+                _ => todo!("Callee {:?}", callee.value),
+            },
         }
     }
 
@@ -235,7 +289,7 @@ impl<'a> Codegen<'a> {
             .unwrap()
     }
 
-    fn local_value(&self, scope: &Rc<RefCell<dyn Scope>>, name: &str) -> Option<PointerValue<'a>> {
+    fn local_value(&self, llvm_func: &LlvmFunctionScope<'a>, scope: &Rc<RefCell<dyn Scope>>, name: &str) -> Option<IdentValue<'a>> {
         if let Some(local) = scope.borrow().local(name) {
             if let Some(scope_index) = local.scope_index {
                 // Local variable
@@ -247,10 +301,13 @@ impl<'a> Codegen<'a> {
                     .clone();
                 let stack_values = llvm_scope.stack_values.borrow();
 
-                stack_values.get(name).cloned()
+                stack_values.get(name).cloned().map(IdentValue::Variable)
             } else {
                 // Argument
-                todo!()
+                let index = llvm_func.param_mapping.get(name).unwrap();
+                let param = llvm_func.func.get_nth_param(*index as u32);
+
+                param.map(IdentValue::Argument)
             }
         } else {
             None

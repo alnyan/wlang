@@ -18,3 +18,9 @@ pub struct Pass1Program {
     // Pass 0 info
     pass0: Pass0Program,
 }
+
+impl Pass1Program {
+    pub fn function(&self, name: &str) -> Option<&LangFunction> {
+        self.functions.iter().find(|f| f.name == name)
+    }
+}

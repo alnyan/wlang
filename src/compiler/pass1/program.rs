@@ -44,7 +44,7 @@ pub fn pass1_function(
         ));
     }
 
-    let arg_types = locals.iter().map(|(_, t)| t.ty.clone()).collect();
+    let arg_types = locals.iter().map(|(n, t)| (n.clone(), t.ty.clone())).collect();
 
     let scope: Rc<RefCell<dyn Scope>> = Rc::new(RefCell::new(FunctionScope::new(
         return_type.clone(),

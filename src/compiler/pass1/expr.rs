@@ -44,7 +44,7 @@ pub fn pass1_local_definition(
             ty: ty.clone(),
             is_mutable,
             scope_index,
-            fn_index
+            fn_index,
         },
     );
 
@@ -53,7 +53,11 @@ pub fn pass1_local_definition(
         ast_node: expr.clone(),
         scope_index: scope.borrow().index(),
         fn_index: scope.borrow().function_index(),
-        value: TaggedExprValue::LocalDefinition { ty, name: def.name.clone(), value },
+        value: TaggedExprValue::LocalDefinition {
+            ty,
+            name: def.name.clone(),
+            value,
+        },
     }))
 }
 
@@ -156,6 +160,48 @@ pub fn pass1_block(
     }))
 }
 
+pub fn pass1_call(
+    pass1: &Pass1Program,
+    scope: &Rc<RefCell<dyn Scope>>,
+    expr: &Rc<Node>,
+    callee: &Rc<Node>,
+    args: &[Rc<Node>],
+) -> Result<Rc<TaggedExpr>, CompilerError> {
+    let callee_func = match callee.as_ref() {
+        Node::Ident(name) => pass1.function(name).unwrap(),
+        _ => todo!(),
+    };
+    let tagged_callee = pass1_expr(pass1, scope, callee)?;
+    let callee_return_ty = callee_func.signature.return_type.clone();
+    let args = args
+        .iter()
+        .map(|arg| pass1_expr(pass1, scope, arg))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if args.len() != callee_func.signature.arg_types.len() {
+        todo!();
+    }
+
+    args.iter()
+        .zip(callee_func.signature.arg_types.iter())
+        .map(|(arg, (_, expected))| {
+            if &arg.ty == expected {
+                Ok(())
+            } else {
+                Err(CompilerError::TypeMismatchUnary(expected.clone(), arg.ty.clone()))
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(Rc::new(TaggedExpr {
+        ty: callee_return_ty,
+        fn_index: scope.borrow().function_index(),
+        scope_index: scope.borrow().index(),
+        ast_node: expr.clone(),
+        value: TaggedExprValue::Call(tagged_callee, args),
+    }))
+}
+
 pub fn pass1_expr(
     pass1: &Pass1Program,
     scope: &Rc<RefCell<dyn Scope>>,
@@ -167,8 +213,10 @@ pub fn pass1_expr(
                 local.ty
             } else if let Some(global) = pass1.globals.get(name.as_str()) {
                 global.ty.clone()
+            } else if let Some(_) = pass1.function(name.as_str()) {
+                pass1.pass0.void_type()
             } else {
-                todo!();
+                todo!()
             };
 
             Ok(Rc::new(TaggedExpr {
@@ -200,6 +248,7 @@ pub fn pass1_expr(
         })),
         Node::Binary(op, lhs, rhs) => pass1_binary(pass1, scope, expr, op, lhs, rhs),
         Node::LocalDefinition(def) => pass1_local_definition(pass1, scope, expr, def),
+        Node::Call(callee, args) => pass1_call(pass1, scope, expr, callee, args),
         _ => todo!("{:?}", expr),
     }
 }

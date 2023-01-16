@@ -40,7 +40,7 @@ pub enum LangType {
 #[derive(Debug)]
 pub struct FunctionSignature {
     pub return_type: Rc<LangType>,
-    pub arg_types: Vec<Rc<LangType>>,
+    pub arg_types: Vec<(String, Rc<LangType>)>,
 }
 
 #[derive(Debug)]
@@ -82,6 +82,7 @@ pub enum TaggedExprValue {
     },
     IntegerLiteral(u64),
     Ident(String),
+    Call(Rc<TaggedExpr>, Vec<Rc<TaggedExpr>>)
 }
 
 #[derive(Derivative)]
@@ -113,9 +114,12 @@ impl LangType {
 
     pub fn as_basic_metadata_type<'a>(
         &self,
-        _context: ContextRef<'a>,
+        context: ContextRef<'a>,
     ) -> BasicMetadataTypeEnum<'a> {
-        todo!()
+        match self {
+            Self::U64 | Self::I64 => BasicMetadataTypeEnum::IntType(context.i64_type()),
+            _ => todo!()
+        }
     }
 
     pub fn make_llvm_function_type<'a>(
