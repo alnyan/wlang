@@ -62,7 +62,7 @@ pub fn pass1_local_definition(
 }
 
 fn pass1_basic_binary(
-    _pass1: &Pass1Program,
+    pass1: &Pass1Program,
     _scope: &Rc<RefCell<dyn Scope>>,
     op: BasicOperator,
     lhs: &Rc<LangType>,
@@ -78,6 +78,18 @@ fn pass1_basic_binary(
                 Ok(lhs.clone())
             } else {
                 todo!();
+            }
+        }
+        BasicOperator::Le
+        | BasicOperator::Lt
+        | BasicOperator::Ge
+        | BasicOperator::Gt
+        | BasicOperator::Ne
+        | BasicOperator::Eq => {
+            if lhs == rhs {
+                Ok(pass1.pass0.named_type("u64").unwrap())
+            } else {
+                todo!()
             }
         }
         _ => todo!(),
@@ -96,6 +108,12 @@ pub fn pass1_binary(
     let rhs = pass1_expr(pass1, scope, rhs)?;
 
     let ty = match op {
+        Token::BasicOperator(BasicOperator::Assign) => {
+            if lhs.ty != rhs.ty {
+                todo!();
+            }
+            pass1.pass0.void_type()
+        }
         Token::BasicOperator(op) => pass1_basic_binary(pass1, scope, *op, &lhs.ty, &rhs.ty)?,
         _ => panic!(),
     };
@@ -127,7 +145,10 @@ pub fn pass1_block(
         let non_terminal = &items[..items.len() - 1];
 
         for item in non_terminal {
-            if !matches!(item.as_ref(), Node::Statement(_)) {
+            if !matches!(item.as_ref(), Node::Statement(_))
+                && !matches!(item.as_ref(), Node::Condition { .. })
+                && !matches!(item.as_ref(), Node::Loop { .. })
+            {
                 return Err(CompilerError::InvalidOperation(
                     item.clone(),
                     "Expected a statement, not an expression".to_string(),
@@ -147,7 +168,7 @@ pub fn pass1_block(
 
         value_ty
     } else {
-        todo!()
+        pass1.pass0.void_type()
     };
 
     let scope_index = block_scope.borrow().index();
@@ -157,6 +178,68 @@ pub fn pass1_block(
         fn_index: scope.borrow().function_index(),
         scope_index,
         value: TaggedExprValue::Block(tagged_items),
+    }))
+}
+
+pub fn pass1_condition(
+    pass1: &Pass1Program,
+    scope: &Rc<RefCell<dyn Scope>>,
+    expr: &Rc<Node>,
+    condition: &Rc<Node>,
+    if_true: &Rc<Node>,
+    if_false: &Option<Rc<Node>>,
+) -> Result<Rc<TaggedExpr>, CompilerError> {
+    let condition = pass1_expr(pass1, scope, condition)?;
+    let if_true = pass1_expr(pass1, scope, if_true)?;
+    let if_false = if let Some(if_false) = if_false {
+        Some(pass1_expr(pass1, scope, if_false)?)
+    } else {
+        None
+    };
+    // TODO check types
+    let ty = if let Some(if_false) = if_false.as_ref() {
+        if if_false.ty != if_true.ty {
+            todo!();
+        }
+
+        if_true.ty.clone()
+    } else {
+        pass1.pass0.void_type()
+    };
+
+    Ok(Rc::new(TaggedExpr {
+        ty,
+        fn_index: scope.borrow().function_index(),
+        scope_index: scope.borrow().index(),
+        ast_node: expr.clone(),
+        value: TaggedExprValue::Condition {
+            condition,
+            if_true,
+            if_false,
+        },
+    }))
+}
+
+pub fn pass1_loop(
+    pass1: &Pass1Program,
+    scope: &Rc<RefCell<dyn Scope>>,
+    expr: &Rc<Node>,
+    condition: &Option<Rc<Node>>,
+    body: &Rc<Node>,
+) -> Result<Rc<TaggedExpr>, CompilerError> {
+    let condition = if let Some(condition) = condition {
+        Some(pass1_expr(pass1, scope, condition)?)
+    } else {
+        None
+    };
+    let body = pass1_expr(pass1, scope, body)?;
+
+    Ok(Rc::new(TaggedExpr {
+        ty: pass1.pass0.void_type(),
+        fn_index: scope.borrow().function_index(),
+        scope_index: scope.borrow().index(),
+        ast_node: expr.clone(),
+        value: TaggedExprValue::Loop { condition, body },
     }))
 }
 
@@ -249,6 +332,12 @@ pub fn pass1_expr(
             fn_index: scope.borrow().function_index(),
             value: TaggedExprValue::IntegerLiteral(*value),
         })),
+        Node::Condition {
+            condition,
+            if_true,
+            if_false,
+        } => pass1_condition(pass1, scope, expr, condition, if_true, if_false),
+        Node::Loop { condition, body } => pass1_loop(pass1, scope, expr, condition, body),
         Node::Binary(op, lhs, rhs) => pass1_binary(pass1, scope, expr, op, lhs, rhs),
         Node::LocalDefinition {
             name,

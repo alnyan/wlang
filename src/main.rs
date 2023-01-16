@@ -13,5 +13,5 @@ fn main() {
     // Setup context
     let pass0 = backend::pass0_program(&ast).unwrap();
     let pass1 = backend::pass1_program(pass0, &ast).unwrap();
-    backend::compile_module(pass1, "main").unwrap();
+    backend::compile_module(pass1, "main", "out/main.bc1").unwrap();
 }

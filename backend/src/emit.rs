@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, path::Path, fs::File, io::Write};
 
 use ast::{token::BasicOperator, Node, Token};
 use inkwell::{
@@ -10,12 +10,35 @@ use inkwell::{
         AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
         GlobalValue as LlvmGlobalValue, PointerValue,
     },
+    IntPredicate, memory_buffer::MemoryBuffer,
 };
 
 use super::{
     pass1::Scope, CompilerError, FunctionImplementation, FunctionSignature, GlobalValue,
     Pass1Program, TaggedExpr, TaggedExprValue,
 };
+
+trait AsIntComparisonPredicate {
+    fn as_int_comparison_predicate(&self, signed: bool) -> IntPredicate;
+}
+
+impl AsIntComparisonPredicate for BasicOperator {
+    fn as_int_comparison_predicate(&self, signed: bool) -> IntPredicate {
+        match self {
+            Self::Eq => IntPredicate::EQ,
+            Self::Ne => IntPredicate::NE,
+            Self::Lt if signed => IntPredicate::SLT,
+            Self::Lt if !signed => IntPredicate::ULT,
+            Self::Gt if signed => IntPredicate::SGT,
+            Self::Gt if !signed => IntPredicate::UGT,
+            Self::Le if signed => IntPredicate::SLE,
+            Self::Le if !signed => IntPredicate::ULE,
+            Self::Ge if signed => IntPredicate::SGE,
+            Self::Ge if !signed => IntPredicate::UGE,
+            _ => todo!(),
+        }
+    }
+}
 
 pub struct Codegen<'a> {
     module: Module<'a>,
@@ -72,7 +95,7 @@ impl<'a> Codegen<'a> {
     }
 
     pub fn compile_function_implementation(
-        &mut self,
+        &self,
         implementation: &'a FunctionImplementation,
         llvm_func: &LlvmFunctionScope<'a>,
     ) -> Result<(), CompilerError> {
@@ -96,7 +119,7 @@ impl<'a> Codegen<'a> {
     }
 
     pub fn compile_function_signature(
-        &mut self,
+        &self,
         name: &str,
         func: &'a FunctionSignature,
     ) -> Result<FunctionValue<'a>, CompilerError> {
@@ -119,7 +142,7 @@ impl<'a> Codegen<'a> {
         &self,
         llvm_func_scope: &LlvmFunctionScope<'a>,
         name: &str,
-        args: &'a [Rc<TaggedExpr>],
+        args: &[Rc<TaggedExpr>],
     ) -> Result<Option<AnyValueEnum>, CompilerError> {
         let llvm_func = self.module.get_function(name).unwrap();
         let compiled_args = args
@@ -142,7 +165,7 @@ impl<'a> Codegen<'a> {
     pub fn compile_expr(
         &self,
         llvm_func: &LlvmFunctionScope<'a>,
-        expr: &'a Rc<TaggedExpr>,
+        expr: &Rc<TaggedExpr>,
     ) -> Result<Option<AnyValueEnum>, CompilerError> {
         let scope = self.scope(expr.fn_index, expr.scope_index).unwrap();
         match &expr.value {
@@ -171,26 +194,81 @@ impl<'a> Codegen<'a> {
                 Ok(None)
             }
             TaggedExprValue::Binary { op, lhs, rhs } => {
-                let llvm_ty = expr.ty.as_llvm_any_type(self.module.get_context()).unwrap();
-                let lhs = self.compile_expr(llvm_func, lhs)?.unwrap();
                 let rhs = self.compile_expr(llvm_func, rhs)?.unwrap();
 
-                let value = match op {
-                    Token::BasicOperator(BasicOperator::Add) => match llvm_ty {
-                        AnyTypeEnum::IntType(_) => {
-                            assert!(lhs.is_int_value());
-                            assert!(rhs.is_int_value());
+                if *op == Token::BasicOperator(BasicOperator::Assign) {
+                    let TaggedExprValue::Ident(name) = &lhs.value else {
+                        todo!()
+                    };
 
-                            self.builder
-                                .build_int_add(lhs.into_int_value(), rhs.into_int_value(), "")
-                                .into()
+                    let Some(lhs_ptr) = self.local_value(llvm_func, &scope, name) else {
+                        todo!()
+                    };
+
+                    match lhs_ptr {
+                        IdentValue::Variable(ptr) => {
+                            self.builder.build_store(
+                                ptr,
+                                match rhs {
+                                    AnyValueEnum::IntValue(i) => BasicValueEnum::IntValue(i),
+                                    _ => todo!(),
+                                },
+                            );
+
+                            Ok(None)
                         }
                         _ => todo!(),
-                    },
-                    _ => todo!(),
-                };
+                    }
+                } else {
+                    let lhs = self.compile_expr(llvm_func, lhs)?.unwrap();
+                    let llvm_ty = expr.ty.as_llvm_any_type(self.module.get_context()).unwrap();
 
-                Ok(Some(value))
+                    let value = match llvm_ty {
+                        AnyTypeEnum::IntType(_) => {
+                            let lhs = lhs.into_int_value();
+                            let rhs = rhs.into_int_value();
+
+                            if let Token::BasicOperator(op) = op {
+                                if op.is_arithmetic() {
+                                    match op {
+                                        BasicOperator::Add => {
+                                            self.builder.build_int_add(lhs, rhs, "").into()
+                                        }
+                                        BasicOperator::Sub => {
+                                            self.builder.build_int_sub(lhs, rhs, "").into()
+                                        }
+                                        BasicOperator::Mul => {
+                                            self.builder.build_int_mul(lhs, rhs, "").into()
+                                        }
+                                        BasicOperator::Div => {
+                                            self.builder.build_int_unsigned_div(lhs, rhs, "").into()
+                                        }
+                                        BasicOperator::Mod => {
+                                            self.builder.build_int_unsigned_rem(lhs, rhs, "").into()
+                                        }
+                                        _ => todo!(),
+                                    }
+                                } else if op.is_comparison() {
+                                    self.builder
+                                        .build_int_compare(
+                                            op.as_int_comparison_predicate(false),
+                                            lhs,
+                                            rhs,
+                                            "",
+                                        )
+                                        .into()
+                                } else {
+                                    todo!()
+                                }
+                            } else {
+                                todo!()
+                            }
+                        }
+                        _ => todo!(),
+                    };
+
+                    Ok(Some(value))
+                }
             }
             TaggedExprValue::LocalDefinition { ty, name, value } => {
                 let llvm_scope = self.llvm_scope(expr.fn_index, expr.scope_index.unwrap());
@@ -232,11 +310,97 @@ impl<'a> Codegen<'a> {
                     IdentValue::Variable(ptr) => self.builder.build_load(ptr, "").into(),
                     IdentValue::Argument(val) => val.into(),
                 }))
-            } // _ => todo!("{:?}", expr),
+            }
             TaggedExprValue::Call(callee, args) => match &callee.value {
                 TaggedExprValue::Ident(name) => self.compile_simple_call(llvm_func, name, args),
                 _ => todo!("Callee {:?}", callee.value),
             },
+            TaggedExprValue::Loop { condition, body } => {
+                let bb_loop_entry = self
+                    .module
+                    .get_context()
+                    .append_basic_block(llvm_func.func, "loop_entry");
+                let bb_loop_body = self
+                    .module
+                    .get_context()
+                    .append_basic_block(llvm_func.func, "loop_body");
+                let bb_loop_exit = self
+                    .module
+                    .get_context()
+                    .append_basic_block(llvm_func.func, "loop_exit");
+
+                self.builder.build_unconditional_branch(bb_loop_entry);
+                self.builder.position_at_end(bb_loop_entry);
+
+                if let Some(condition) = condition {
+                    let condition_value = self.compile_expr(llvm_func, condition)?.unwrap();
+
+                    self.builder.build_conditional_branch(
+                        condition_value.into_int_value(),
+                        bb_loop_body,
+                        bb_loop_exit,
+                    );
+
+                    self.builder.position_at_end(bb_loop_body);
+                } else {
+                    todo!()
+                }
+
+                self.compile_expr(llvm_func, body)?;
+
+                self.builder.build_unconditional_branch(bb_loop_entry);
+                self.builder.position_at_end(bb_loop_exit);
+
+                Ok(None)
+            }
+            TaggedExprValue::Condition {
+                condition,
+                if_true,
+                if_false,
+            } => {
+                let condition_value = self.compile_expr(llvm_func, condition)?.unwrap();
+
+                let bb_true = self
+                    .module
+                    .get_context()
+                    .append_basic_block(llvm_func.func, "if_true");
+                let bb_false = self
+                    .module
+                    .get_context()
+                    .append_basic_block(llvm_func.func, "if_false");
+
+                self.builder.build_conditional_branch(
+                    condition_value.into_int_value(),
+                    bb_true,
+                    bb_false,
+                );
+
+                self.builder.position_at_end(bb_true);
+                // TODO pick value
+                self.compile_expr(llvm_func, if_true)?;
+
+                if let Some(if_false) = if_false {
+                    let bb_end = self
+                        .module
+                        .get_context()
+                        .append_basic_block(llvm_func.func, "if_end");
+                    self.builder.build_unconditional_branch(bb_end);
+
+                    self.builder.position_at_end(bb_false);
+
+                    // TODO pick value
+                    self.compile_expr(llvm_func, if_false)?;
+
+                    self.builder.build_unconditional_branch(bb_end);
+
+                    self.builder.position_at_end(bb_end);
+                } else {
+                    self.builder.build_unconditional_branch(bb_false);
+                    self.builder.position_at_end(bb_false);
+                }
+
+                Ok(None)
+            }
         }
     }
 
@@ -268,7 +432,7 @@ impl<'a> Codegen<'a> {
         Ok(())
     }
 
-    pub fn compile_module(&mut self) -> Result<(), CompilerError> {
+    pub fn compile_module(&mut self) -> Result<MemoryBuffer, CompilerError> {
         for (name, global) in self.pass1.globals.iter() {
             self.compile_global_definition(name, global)?;
         }
@@ -301,14 +465,7 @@ impl<'a> Codegen<'a> {
             }
         }
 
-        self.module.print_to_stderr();
-
-        let ee = self.module.create_interpreter_execution_engine().unwrap();
-        let fun = self.module.get_function("main").unwrap();
-        let result = unsafe { ee.run_function(fun, &[]) };
-        dbg!(result.as_int(false));
-
-        Ok(())
+        Ok(self.module.write_bitcode_to_memory())
     }
 
     fn llvm_scope(&self, fn_index: usize, scope_index: usize) -> Rc<LlvmScope<'a>> {
@@ -350,8 +507,15 @@ impl<'a> Codegen<'a> {
     }
 }
 
-pub fn compile_module(pass1: Pass1Program, name: &str) -> Result<(), CompilerError> {
+pub fn compile_module<P: AsRef<Path>>(pass1: Pass1Program, name: &str, dst_obj: P) -> Result<(), CompilerError> {
     let context = Context::create();
     let mut cg = Codegen::new(&pass1, name, &context);
-    cg.compile_module()
+    let result = cg.compile_module()?;
+
+    let Ok(mut file) = File::create(dst_obj) else {
+        todo!();
+    };
+    file.write_all(result.as_slice()).unwrap();
+
+    Ok(())
 }

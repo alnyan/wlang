@@ -17,6 +17,15 @@ pub enum Node {
     },
     Block(Vec<Rc<Node>>),
     Statement(Rc<Node>),
+    Condition {
+        condition: Rc<Node>,
+        if_true: Rc<Node>,
+        if_false: Option<Rc<Node>>
+    },
+    Loop {
+        condition: Option<Rc<Node>>,
+        body: Rc<Node>
+    },
     GlobalDefinition {
         name: String,
         is_const: bool,
@@ -32,6 +41,6 @@ pub enum Node {
     ExternFunction {
         name: String,
         ret_type: Option<Rc<Node>>,
-        arg_types: Vec<(Rc<Node>, Rc<Node>)>
-    }
+        arg_types: Vec<(Rc<Node>, Rc<Node>)>,
+    },
 }

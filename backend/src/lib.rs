@@ -89,6 +89,15 @@ pub enum TaggedExprValue {
         name: String,
         value: Rc<TaggedExpr>,
     },
+    Condition {
+        condition: Rc<TaggedExpr>,
+        if_true: Rc<TaggedExpr>,
+        if_false: Option<Rc<TaggedExpr>>
+    },
+    Loop {
+        condition: Option<Rc<TaggedExpr>>,
+        body: Rc<TaggedExpr>,
+    },
     IntegerLiteral(u64),
     Ident(String),
     Call(Rc<TaggedExpr>, Vec<Rc<TaggedExpr>>)

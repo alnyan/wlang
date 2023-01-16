@@ -13,7 +13,7 @@ pub enum Punctuation {
     LBrace,
     RBrace,
     LBracket,
-    RBracket
+    RBracket,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -24,27 +24,35 @@ pub enum Keyword {
     Operator,
     Extern,
     Fn,
+    If,
+    Else,
+    While,
+    Loop,
+    Break,
+    Continue,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BasicOperator {
-    Assign,             // =
-    FatArrow,           // =>
-    Arrow,              // ->
-    Add,                // +
-    Sub,                // -
-    Mul,                // *
-    Div,                // /
-    Mod,                // %
-    Colon,              // :
-    DoubleColon,        // ::
-    Dot,                // .
-    Question,           // ?
-    Lt,                 // <
-    Gt,                 // >
-    Le,                 // <=
-    Ge,                 // >=
-    Comment,            // //
+    Assign,      // =
+    FatArrow,    // =>
+    Arrow,       // ->
+    Add,         // +
+    Sub,         // -
+    Mul,         // *
+    Div,         // /
+    Mod,         // %
+    Colon,       // :
+    DoubleColon, // ::
+    Dot,         // .
+    Question,    // ?
+    Lt,          // <
+    Gt,          // >
+    Le,          // <=
+    Ge,          // >=
+    Eq,          // ==
+    Ne,          // !=
+    Comment,     // //
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +71,16 @@ impl Token {
     }
 }
 
+impl BasicOperator {
+    pub const fn is_comparison(&self) -> bool {
+        matches!(self, Self::Ne | Self::Eq | Self::Gt | Self::Lt | Self::Ge | Self::Le)
+    }
+
+    pub const fn is_arithmetic(&self) -> bool {
+        matches!(self, Self::Add | Self::Sub | Self::Mul | Self::Div | Self::Mod)
+    }
+}
+
 impl FromChar for Punctuation {
     fn from_char(s: char) -> Option<Self> {
         match s {
@@ -74,7 +92,7 @@ impl FromChar for Punctuation {
             ']' => Some(Punctuation::RBracket),
             '{' => Some(Punctuation::LBrace),
             '}' => Some(Punctuation::RBrace),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -100,8 +118,10 @@ impl FromStr for BasicOperator {
             "<" => Ok(Self::Lt),
             ">=" => Ok(Self::Ge),
             "<=" => Ok(Self::Le),
+            "==" => Ok(Self::Eq),
+            "!=" => Ok(Self::Ne),
             "//" => Ok(Self::Comment),
-            _ => Err(())
+            _ => Err(()),
         }
     }
 }
@@ -117,7 +137,11 @@ impl FromStr for Keyword {
             "let" => Ok(Self::Let),
             "const" => Ok(Self::Const),
             "extern" => Ok(Self::Extern),
-            _ => Err(())
+            "if" => Ok(Self::If),
+            "else" => Ok(Self::Else),
+            "while" => Ok(Self::While),
+            "break" => Ok(Self::Break),
+            _ => Err(()),
         }
     }
 }

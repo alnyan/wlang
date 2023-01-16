@@ -7,7 +7,7 @@ use ast::{
 
 use super::{
     combinator::parse_many0,
-    program::{maybe_call, parse_type},
+    program::{maybe_call, parse_block, parse_type},
     ParserError,
 };
 
@@ -38,6 +38,30 @@ def_parser!(pub parse_local_definition<S>(input: &mut S) -> Rc<Node> {
     }))
 });
 
+def_parser!(pub parse_condition<S>(input: &mut S) -> Rc<Node> {
+    let condition = parse_expr(input)?;
+    let if_true = parse_block(input)?;
+
+    let if_false = if let Some(token) = input.peek()? && token == Token::Keyword(Keyword::Else) {
+        input.next()?.unwrap();
+        Some(parse_block(input)?)
+    } else {
+        None
+    };
+
+    Ok(Rc::new(Node::Condition { condition, if_true, if_false }))
+});
+
+def_parser!(pub parse_while_loop<S>(input: &mut S) -> Rc<Node> {
+    let condition = parse_expr(input)?;
+    let body = parse_block(input)?;
+
+    Ok(Rc::new(Node::Loop {
+        condition: Some(condition),
+        body
+    }))
+});
+
 def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
     let Some(token) = input.next()? else {
         return Err(ParserError::UnexpectedEof);
@@ -47,6 +71,8 @@ def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
         Token::Ident(name) => Ok(Rc::new(Node::Ident(name))),
         Token::IntegerLiteral(value) => Ok(Rc::new(Node::IntegerLiteral(value))),
         Token::Keyword(Keyword::Let) => parse_local_definition(input),
+        Token::Keyword(Keyword::If) => parse_condition(input),
+        Token::Keyword(Keyword::While) => parse_while_loop(input),
         Token::Punctuation(Punctuation::LBrace) => {
             let items = parse_many0(
                 input,
