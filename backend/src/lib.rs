@@ -11,8 +11,7 @@ use ast::{Node, Token};
 pub use emit::compile_module;
 use inkwell::{
     context::ContextRef,
-    types::{AnyTypeEnum, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, IntType, BasicType},
-    values::IntValue,
+    types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, IntType},
 };
 pub use pass0::{pass0_program, Pass0Program};
 pub use pass1::{pass1_program, Pass1Program};
@@ -104,6 +103,7 @@ pub enum TaggedExprValue {
         condition: Option<Rc<TaggedExpr>>,
         body: Rc<TaggedExpr>,
     },
+    BreakLoop,
     IntegerLiteral(u64),
     Ident(String),
     Call(Rc<TaggedExpr>, Vec<Rc<TaggedExpr>>),
@@ -147,7 +147,7 @@ impl LangType {
     pub fn as_llvm_basic_type<'a>(&self, context: ContextRef<'a>) -> Option<BasicTypeEnum<'a>> {
         match self {
             Self::IntType(it) => Some(it.as_llvm_basic_type(context)),
-            Self::Void => None
+            Self::Void => None,
         }
     }
 }

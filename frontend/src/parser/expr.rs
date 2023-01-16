@@ -75,6 +75,7 @@ def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
         Token::Keyword(Keyword::Let) => parse_local_definition(input),
         Token::Keyword(Keyword::If) => parse_condition(input),
         Token::Keyword(Keyword::While) => parse_while_loop(input),
+        Token::Keyword(Keyword::Break) => Ok(Rc::new(Node::BreakLoop)),
         Token::Punctuation(Punctuation::LBrace) => {
             let items = parse_many0(
                 input,

@@ -2,11 +2,11 @@ use std::{cell::RefCell, collections::HashMap, fs::File, io::Write, path::Path, 
 
 use ast::{token::BasicOperator, Node, Token};
 use inkwell::{
+    basic_block::BasicBlock,
     builder::Builder,
     context::Context,
     memory_buffer::MemoryBuffer,
     module::{Linkage, Module},
-    types::AnyTypeEnum,
     values::{
         AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
         GlobalValue as LlvmGlobalValue, PointerValue,
@@ -107,7 +107,7 @@ impl<'a> Codegen<'a> {
             .get_context()
             .append_basic_block(llvm_func.func, "entry");
         self.builder.position_at_end(llvm_basic_block);
-        let return_value = self.compile_expr(llvm_func, &implementation.body)?;
+        let return_value = self.compile_expr(llvm_func, None, &implementation.body)?;
 
         if let Some(return_value) = return_value {
             match return_value {
@@ -146,6 +146,7 @@ impl<'a> Codegen<'a> {
     pub fn compile_simple_call(
         &self,
         llvm_func_scope: &LlvmFunctionScope<'a>,
+        loop_exit: Option<BasicBlock<'a>>,
         name: &str,
         args: &'a [Rc<TaggedExpr>],
     ) -> Result<Option<AnyValueEnum>, CompilerError> {
@@ -153,7 +154,7 @@ impl<'a> Codegen<'a> {
         let compiled_args = args
             .iter()
             .map(|arg| {
-                self.compile_expr(llvm_func_scope, arg)
+                self.compile_expr(llvm_func_scope, loop_exit, arg)
                     .map(Option::unwrap)
                     .map(|arg| match arg {
                         AnyValueEnum::IntValue(value) => BasicMetadataValueEnum::IntValue(value),
@@ -170,6 +171,7 @@ impl<'a> Codegen<'a> {
     pub fn compile_expr(
         &self,
         llvm_func: &LlvmFunctionScope<'a>,
+        loop_exit: Option<BasicBlock<'a>>,
         expr: &'a Rc<TaggedExpr>,
     ) -> Result<Option<AnyValueEnum>, CompilerError> {
         let scope = self.scope(expr.fn_index, expr.scope_index).unwrap();
@@ -185,7 +187,7 @@ impl<'a> Codegen<'a> {
                     .insert((expr.fn_index, expr.scope_index.unwrap()), scope);
 
                 for (i, item) in items.iter().enumerate() {
-                    let value = self.compile_expr(llvm_func, item)?;
+                    let value = self.compile_expr(llvm_func, loop_exit, item)?;
 
                     if i == items.len() - 1 {
                         return Ok(value);
@@ -195,11 +197,11 @@ impl<'a> Codegen<'a> {
                 Ok(None)
             }
             TaggedExprValue::Statement(inner) => {
-                self.compile_expr(llvm_func, inner)?;
+                self.compile_expr(llvm_func, loop_exit, inner)?;
                 Ok(None)
             }
             TaggedExprValue::Binary { op, lhs, rhs } => {
-                let rhs = self.compile_expr(llvm_func, rhs)?.unwrap();
+                let rhs = self.compile_expr(llvm_func, loop_exit, rhs)?.unwrap();
 
                 if *op == Token::BasicOperator(BasicOperator::Assign) {
                     let TaggedExprValue::Ident(name) = &lhs.value else {
@@ -225,8 +227,7 @@ impl<'a> Codegen<'a> {
                         _ => todo!(),
                     }
                 } else {
-                    let lhs = self.compile_expr(llvm_func, lhs)?.unwrap();
-                    // let llvm_ty = expr.ty.as_llvm_any_type(self.module.get_context()).unwrap();
+                    let lhs = self.compile_expr(llvm_func, loop_exit, lhs)?.unwrap();
 
                     let value = match expr.ty.as_ref() {
                         LangType::IntType(ty) => {
@@ -278,50 +279,6 @@ impl<'a> Codegen<'a> {
                     };
 
                     Ok(Some(value))
-                    //     AnyTypeEnum::IntType(_) => {
-                    //         let lhs = lhs.into_int_value();
-                    //         let rhs = rhs.into_int_value();
-
-                    //         if let Token::BasicOperator(op) = op {
-                    //             if op.is_arithmetic() {
-                    //                 match op {
-                    //                     BasicOperator::Add => {
-                    //                         self.builder.build_int_add(lhs, rhs, "").into()
-                    //                     }
-                    //                     BasicOperator::Sub => {
-                    //                         self.builder.build_int_sub(lhs, rhs, "").into()
-                    //                     }
-                    //                     BasicOperator::Mul => {
-                    //                         self.builder.build_int_mul(lhs, rhs, "").into()
-                    //                     }
-                    //                     BasicOperator::Div => {
-                    //                         self.builder.build_int_unsigned_div(lhs, rhs, "").into()
-                    //                     }
-                    //                     BasicOperator::Mod => {
-                    //                         self.builder.build_int_unsigned_rem(lhs, rhs, "").into()
-                    //                     }
-                    //                     _ => todo!(),
-                    //                 }
-                    //             } else if op.is_comparison() {
-                    //                 self.builder
-                    //                     .build_int_compare(
-                    //                         op.as_int_comparison_predicate(false),
-                    //                         lhs,
-                    //                         rhs,
-                    //                         "",
-                    //                     )
-                    //                     .into()
-                    //             } else {
-                    //                 todo!()
-                    //             }
-                    //         } else {
-                    //             todo!()
-                    //         }
-                    //     }
-                    //     _ => todo!(),
-                    // };
-
-                    // Ok(Some(value))
                 }
             }
             TaggedExprValue::LocalDefinition { ty, name, value } => {
@@ -331,7 +288,7 @@ impl<'a> Codegen<'a> {
                     LangType::IntType(ty) => {
                         let (ty, _) = ty.as_llvm_int_type(self.module.get_context());
                         let ptr = self.builder.build_alloca(ty, name);
-                        let value = self.compile_expr(llvm_func, value)?.unwrap();
+                        let value = self.compile_expr(llvm_func, loop_exit, value)?.unwrap();
 
                         self.builder.build_store(ptr, value.into_int_value());
                         ptr
@@ -370,9 +327,19 @@ impl<'a> Codegen<'a> {
                 }))
             }
             TaggedExprValue::Call(callee, args) => match &callee.value {
-                TaggedExprValue::Ident(name) => self.compile_simple_call(llvm_func, name, args),
+                TaggedExprValue::Ident(name) => {
+                    self.compile_simple_call(llvm_func, loop_exit, name, args)
+                }
                 _ => todo!("Callee {:?}", callee.value),
             },
+            TaggedExprValue::BreakLoop => {
+                if let Some(loop_exit) = loop_exit {
+                    self.builder.build_unconditional_branch(loop_exit);
+                    Ok(None)
+                } else {
+                    todo!()
+                }
+            }
             TaggedExprValue::Loop { condition, body } => {
                 let bb_loop_entry = self
                     .module
@@ -391,7 +358,8 @@ impl<'a> Codegen<'a> {
                 self.builder.position_at_end(bb_loop_entry);
 
                 if let Some(condition) = condition {
-                    let condition_value = self.compile_expr(llvm_func, condition)?.unwrap();
+                    let condition_value =
+                        self.compile_expr(llvm_func, loop_exit, condition)?.unwrap();
 
                     self.builder.build_conditional_branch(
                         condition_value.into_int_value(),
@@ -404,7 +372,7 @@ impl<'a> Codegen<'a> {
                     todo!()
                 }
 
-                self.compile_expr(llvm_func, body)?;
+                self.compile_expr(llvm_func, Some(bb_loop_exit), body)?;
 
                 self.builder.build_unconditional_branch(bb_loop_entry);
                 self.builder.position_at_end(bb_loop_exit);
@@ -416,7 +384,7 @@ impl<'a> Codegen<'a> {
                 if_true,
                 if_false,
             } => {
-                let condition_value = self.compile_expr(llvm_func, condition)?.unwrap();
+                let condition_value = self.compile_expr(llvm_func, loop_exit, condition)?.unwrap();
 
                 let bb_true = self
                     .module
@@ -435,7 +403,7 @@ impl<'a> Codegen<'a> {
 
                 self.builder.position_at_end(bb_true);
                 // TODO pick value
-                self.compile_expr(llvm_func, if_true)?;
+                self.compile_expr(llvm_func, loop_exit, if_true)?;
 
                 if let Some(if_false) = if_false {
                     let bb_end = self
@@ -447,7 +415,7 @@ impl<'a> Codegen<'a> {
                     self.builder.position_at_end(bb_false);
 
                     // TODO pick value
-                    self.compile_expr(llvm_func, if_false)?;
+                    self.compile_expr(llvm_func, loop_exit, if_false)?;
 
                     self.builder.build_unconditional_branch(bb_end);
 
@@ -574,13 +542,8 @@ pub fn compile_module<P: AsRef<Path>>(
 ) -> Result<(), CompilerError> {
     let context = Context::create();
     let mut cg = Codegen::new(&pass1, name, &context);
-    let result = cg.compile_module()?;
-    cg.module.print_to_stderr();
-
-    let Ok(mut file) = File::create(dst_obj) else {
-        todo!();
-    };
-    file.write_all(result.as_slice()).unwrap();
+    cg.compile_module()?;
+    print!("{}", cg.module.print_to_string().to_string());
 
     Ok(())
 }

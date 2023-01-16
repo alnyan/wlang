@@ -346,6 +346,14 @@ pub fn pass1_expr(
             value,
         } => pass1_local_definition(pass1, scope, expr, name, *is_mutable, ty, value),
         Node::Call(callee, args) => pass1_call(pass1, scope, expr, callee, args),
+        // TODO check if actually in a loop
+        Node::BreakLoop => Ok(Rc::new(TaggedExpr {
+            ty: pass1.pass0.void_type(),
+            fn_index: scope.borrow().function_index(),
+            scope_index: scope.borrow().index(),
+            ast_node: expr.clone(),
+            value: TaggedExprValue::BreakLoop,
+        })),
         _ => todo!("{:?}", expr),
     }
 }
