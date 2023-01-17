@@ -372,6 +372,33 @@ pub fn pass1_expr(
             ast_node: expr.clone(),
             value: TaggedExprValue::BreakLoop,
         })),
+        Node::Return(return_expr) => {
+            let parent_ty = scope.borrow().function_return_type();
+
+            let ret_value = if let Some(return_expr) = return_expr {
+                let ret_value = pass1_expr(pass1, scope, return_expr)?;
+
+                if ret_value.ty != parent_ty {
+                    todo!();
+                }
+
+                Some(ret_value)
+            } else {
+                if parent_ty != pass1.pass0.void_type() {
+                    todo!();
+                }
+
+                None
+            };
+
+            Ok(Rc::new(TaggedExpr {
+                ty: pass1.pass0.void_type(),
+                fn_index: scope.borrow().function_index(),
+                scope_index: scope.borrow().index(),
+                ast_node: expr.clone(),
+                value: TaggedExprValue::Return(ret_value),
+            }))
+        }
         _ => todo!("{:?}", expr),
     }
 }

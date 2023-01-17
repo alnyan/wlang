@@ -18,6 +18,7 @@ pub enum Node {
     Block(Vec<Rc<Node>>),
     Statement(Rc<Node>),
     BreakLoop,
+    Return(Option<Rc<Node>>),
     Condition {
         condition: Rc<Node>,
         if_true: Rc<Node>,

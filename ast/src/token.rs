@@ -30,6 +30,7 @@ pub enum Keyword {
     Loop,
     Break,
     Continue,
+    Return,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -159,6 +160,7 @@ impl FromStr for Keyword {
             "let" => Ok(Self::Let),
             "const" => Ok(Self::Const),
             "extern" => Ok(Self::Extern),
+            "return" => Ok(Self::Return),
             "if" => Ok(Self::If),
             "else" => Ok(Self::Else),
             "while" => Ok(Self::While),

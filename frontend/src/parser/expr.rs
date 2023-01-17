@@ -67,6 +67,17 @@ def_parser!(pub parse_while_loop<S>(input: &mut S) -> Rc<Node> {
     }))
 });
 
+def_parser!(pub parse_return<S>(input: &mut S) -> Rc<Node> {
+    let return_expr = if let Some(token) = input.peek()? && token != Token::Punctuation(Punctuation::Semicolon) {
+        input.next()?.unwrap();
+        Some(parse_expr(input)?)
+    } else {
+        None
+    };
+
+    Ok(Rc::new(Node::Return(return_expr)))
+});
+
 def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
     let Some(token) = input.next()? else {
         return Err(ParserError::UnexpectedEof);
@@ -79,6 +90,7 @@ def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
         Token::Keyword(Keyword::If) => parse_condition(input),
         Token::Keyword(Keyword::While) => parse_while_loop(input),
         Token::Keyword(Keyword::Break) => Ok(Rc::new(Node::BreakLoop)),
+        Token::Keyword(Keyword::Return) => parse_return(input),
         Token::Punctuation(Punctuation::LBrace) => {
             let items = parse_many0(
                 input,

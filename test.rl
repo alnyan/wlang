@@ -8,6 +8,10 @@ fn put_hex_i32(v: i32) {
     while cntr != 8i32 {
         let digit: i32 = (v0 >> ((7i32 - cntr) * 4i32)) & 15i32;
 
+        if digit == 15i32 {
+            return;
+        }
+
         if digit < 10i32 {
             putchar(digit + 48i32);
         } else {
@@ -19,7 +23,7 @@ fn put_hex_i32(v: i32) {
 }
 
 fn main() -> i64 {
-    put_hex_i32(1234i32);
+    put_hex_i32(498i32);
     putchar(10i32);
     1
 }

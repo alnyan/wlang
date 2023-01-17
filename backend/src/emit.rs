@@ -238,13 +238,13 @@ impl<'a> Codegen<'a> {
                             if let Token::BasicOperator(op) = op {
                                 match op {
                                     BasicOperator::Add => {
-                                        self.builder.build_int_add(llvm_lhs, llvm_rhs, "").into()
+                                        self.builder.build_int_add(llvm_lhs, llvm_rhs, "add").into()
                                     }
                                     BasicOperator::Sub => {
-                                        self.builder.build_int_sub(llvm_lhs, llvm_rhs, "").into()
+                                        self.builder.build_int_sub(llvm_lhs, llvm_rhs, "sub").into()
                                     }
                                     BasicOperator::Mul => {
-                                        self.builder.build_int_mul(llvm_lhs, llvm_rhs, "").into()
+                                        self.builder.build_int_mul(llvm_lhs, llvm_rhs, "mul").into()
                                     }
                                     BasicOperator::Div => {
                                         if signed {
@@ -260,10 +260,10 @@ impl<'a> Codegen<'a> {
                                             self.builder.build_int_unsigned_rem(llvm_lhs, llvm_rhs, "").into()
                                         }
                                     }
-                                    BasicOperator::BitAnd => self.builder.build_and(llvm_lhs, llvm_rhs, "").into(),
-                                    BasicOperator::BitOr => self.builder.build_or(llvm_lhs, llvm_rhs, "").into(),
-                                    BasicOperator::Shl => self.builder.build_left_shift(llvm_lhs, llvm_rhs, "").into(),
-                                    BasicOperator::Shr => self.builder.build_right_shift(llvm_lhs, llvm_rhs, false, "").into(),
+                                    BasicOperator::BitAnd => self.builder.build_and(llvm_lhs, llvm_rhs, "band").into(),
+                                    BasicOperator::BitOr => self.builder.build_or(llvm_lhs, llvm_rhs, "bor").into(),
+                                    BasicOperator::Shl => self.builder.build_left_shift(llvm_lhs, llvm_rhs, "shl").into(),
+                                    BasicOperator::Shr => self.builder.build_right_shift(llvm_lhs, llvm_rhs, false, "shr").into(),
                                     _ => todo!(),
                                 }
                             } else {
@@ -278,7 +278,7 @@ impl<'a> Codegen<'a> {
                                         let llvm_lhs = llvm_lhs.into_int_value();
                                         let llvm_rhs = llvm_rhs.into_int_value();
                                         let (_, signed) = ty.as_llvm_int_type(self.module.get_context());
-                                        self.builder.build_int_compare(op.as_int_comparison_predicate(signed), llvm_lhs, llvm_rhs, "").into()
+                                        self.builder.build_int_compare(op.as_int_comparison_predicate(signed), llvm_lhs, llvm_rhs, "cmp").into()
                                     }
                                     _ => todo!()
                                 }
@@ -289,8 +289,8 @@ impl<'a> Codegen<'a> {
                                 assert_eq!(lhs.ty, self.pass1.pass0.bool_type());
 
                                 match op {
-                                    BasicOperator::And => self.builder.build_and(llvm_lhs, llvm_rhs, "").into(),
-                                    BasicOperator::Or => self.builder.build_or(llvm_lhs, llvm_rhs, "").into(),
+                                    BasicOperator::And => self.builder.build_and(llvm_lhs, llvm_rhs, "and").into(),
+                                    BasicOperator::Or => self.builder.build_or(llvm_lhs, llvm_rhs, "or").into(),
                                     _ => todo!()
                                 }
                             } else {
@@ -360,6 +360,16 @@ impl<'a> Codegen<'a> {
                     Ok(None)
                 } else {
                     todo!()
+                }
+            }
+            TaggedExprValue::Return(return_value) => {
+                if let Some(return_value) = return_value {
+                    todo!()
+                } else {
+                    self.builder.build_return(None);
+                    let new_bb = self.module.get_context().append_basic_block(llvm_func.func, "ret");
+                    self.builder.position_at_end(new_bb);
+                    Ok(None)
                 }
             }
             TaggedExprValue::Loop { condition, body } => {
