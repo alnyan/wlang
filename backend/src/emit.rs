@@ -272,7 +272,7 @@ impl<'a> Codegen<'a> {
                         }
                         LangType::BoolType => {
                             if let Token::BasicOperator(op) = op && op.is_comparison() {
-                                assert_eq!(lhs.ty, rhs.ty);
+                                assert!(lhs.ty.is_compatible(&rhs.ty));
                                 match lhs.ty.as_ref() {
                                     LangType::IntType(ty) => {
                                         let llvm_lhs = llvm_lhs.into_int_value();
@@ -285,8 +285,8 @@ impl<'a> Codegen<'a> {
                             } else if let Token::BasicOperator(op) = op && op.is_logic() {
                                 let llvm_lhs = llvm_lhs.into_int_value();
                                 let llvm_rhs = llvm_rhs.into_int_value();
-                                assert_eq!(lhs.ty, rhs.ty);
-                                assert_eq!(lhs.ty, self.pass1.pass0.bool_type());
+                                assert!(lhs.ty.is_compatible(&rhs.ty));
+                                assert!(lhs.ty.is_compatible(&self.pass1.pass0.bool_type()));
 
                                 match op {
                                     BasicOperator::And => self.builder.build_and(llvm_lhs, llvm_rhs, "and").into(),
@@ -363,7 +363,7 @@ impl<'a> Codegen<'a> {
                 }
             }
             TaggedExprValue::Return(return_value) => {
-                if let Some(return_value) = return_value {
+                if let Some(_return_value) = return_value {
                     todo!()
                 } else {
                     self.builder.build_return(None);

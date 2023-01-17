@@ -3,7 +3,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use ast::Node;
 
-use crate::LangIntType;
+use crate::types::LangIntType;
 
 use super::{CompilerError, LangType};
 

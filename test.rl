@@ -25,5 +25,7 @@ fn put_hex_i32(v: i32) {
 fn main() -> i64 {
     put_hex_i32(498i32);
     putchar(10i32);
+    put_hex_i32(1234i32);
+    putchar(10i32);
     1
 }

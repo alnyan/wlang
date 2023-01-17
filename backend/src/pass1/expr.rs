@@ -31,7 +31,7 @@ pub fn pass1_local_definition(
     // Check value
     let value = pass1_expr(pass1, scope, value)?;
 
-    if value.ty != ty {
+    if !value.ty.is_compatible(&ty) {
         return Err(CompilerError::TypeMismatchUnary(ty, value.ty.clone()));
     }
 
@@ -78,7 +78,7 @@ fn pass1_basic_binary(
         | BasicOperator::BitAnd
         | BasicOperator::Shl
         | BasicOperator::Shr => {
-            if lhs == rhs && lhs.is_integer() {
+            if lhs.is_compatible(rhs) && lhs.is_integer() {
                 Ok(lhs.clone())
             } else {
                 todo!();
@@ -90,14 +90,14 @@ fn pass1_basic_binary(
         | BasicOperator::Gt
         | BasicOperator::Ne
         | BasicOperator::Eq => {
-            if lhs == rhs && lhs.is_integer() {
+            if lhs.is_compatible(rhs) && lhs.is_integer() {
                 Ok(pass1.pass0.bool_type())
             } else {
                 todo!()
             }
         }
         BasicOperator::And | BasicOperator::Or => {
-            if lhs == rhs && lhs == &pass1.pass0.bool_type() {
+            if lhs.is_compatible(rhs) && lhs.is_compatible(&pass1.pass0.bool_type()) {
                 Ok(pass1.pass0.bool_type())
             } else {
                 todo!()
@@ -120,7 +120,7 @@ pub fn pass1_binary(
 
     let ty = match op {
         Token::BasicOperator(BasicOperator::Assign) => {
-            if lhs.ty != rhs.ty {
+            if !rhs.ty.is_compatible(&lhs.ty) {
                 todo!();
             }
             pass1.pass0.void_type()
@@ -168,7 +168,7 @@ pub fn pass1_block(
 
             let value = pass1_expr(pass1, &block_scope, item)?;
 
-            assert_eq!(value.ty, pass1.pass0.void_type());
+            assert!(value.ty.is_compatible(&pass1.pass0.void_type()));
             tagged_items.push(value);
         }
 
@@ -202,7 +202,7 @@ pub fn pass1_condition(
 ) -> Result<Rc<TaggedExpr>, CompilerError> {
     let condition = pass1_expr(pass1, scope, condition)?;
 
-    if condition.ty != pass1.pass0.bool_type() {
+    if !condition.ty.is_compatible(&pass1.pass0.bool_type()) {
         todo!()
     }
 
@@ -214,7 +214,7 @@ pub fn pass1_condition(
     };
     // TODO check types
     let ty = if let Some(if_false) = if_false.as_ref() {
-        if if_false.ty != if_true.ty {
+        if !if_false.ty.is_compatible(&if_true.ty) {
             todo!();
         }
 
@@ -245,7 +245,7 @@ pub fn pass1_loop(
 ) -> Result<Rc<TaggedExpr>, CompilerError> {
     let condition = if let Some(condition) = condition {
         let value = pass1_expr(pass1, scope, condition)?;
-        assert_eq!(value.ty, pass1.pass0.bool_type());
+        assert!(value.ty.is_compatible(&pass1.pass0.bool_type()));
         Some(value)
     } else {
         None
@@ -286,7 +286,7 @@ pub fn pass1_call(
     args.iter()
         .zip(callee_func.signature.arg_types.iter())
         .map(|(arg, (_, expected))| {
-            if &arg.ty == expected {
+            if arg.ty.is_compatible(expected) {
                 Ok(())
             } else {
                 Err(CompilerError::TypeMismatchUnary(
@@ -378,13 +378,13 @@ pub fn pass1_expr(
             let ret_value = if let Some(return_expr) = return_expr {
                 let ret_value = pass1_expr(pass1, scope, return_expr)?;
 
-                if ret_value.ty != parent_ty {
+                if !ret_value.ty.is_compatible(&parent_ty) {
                     todo!();
                 }
 
                 Some(ret_value)
             } else {
-                if parent_ty != pass1.pass0.void_type() {
+                if !pass1.pass0.void_type().is_compatible(&parent_ty) {
                     todo!();
                 }
 

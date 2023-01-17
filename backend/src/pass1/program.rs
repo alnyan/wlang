@@ -64,7 +64,7 @@ pub fn pass1_function_impl(
 
     let body = pass1_expr(pass1, &scope, body)?;
 
-    if body.ty != sig.return_type {
+    if !body.ty.is_compatible(&sig.return_type) {
         return Err(CompilerError::TypeMismatchUnary(
             sig.return_type.clone(),
             body.ty.clone(),
