@@ -5,10 +5,10 @@ use std::{cell::RefCell, rc::Rc};
 #[macro_use]
 extern crate derivative;
 
-pub mod types;
 pub mod emit;
 pub mod pass0;
 pub mod pass1;
+pub mod types;
 
 pub use types::LangType;
 
@@ -109,4 +109,3 @@ pub struct TaggedExpr {
     pub ast_node: Rc<Node>,
     pub value: TaggedExprValue,
 }
-

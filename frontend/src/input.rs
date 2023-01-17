@@ -12,13 +12,13 @@ pub trait Input<T> {
 // }
 
 pub struct StrInput<'a> {
-    iter: Peekable<Chars<'a>>
+    iter: Peekable<Chars<'a>>,
 }
 
 impl<'a> StrInput<'a> {
     pub fn new(data: &'a str) -> Self {
         Self {
-            iter: data.chars().peekable()
+            iter: data.chars().peekable(),
         }
     }
 }

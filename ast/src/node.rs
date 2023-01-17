@@ -22,11 +22,11 @@ pub enum Node {
     Condition {
         condition: Rc<Node>,
         if_true: Rc<Node>,
-        if_false: Option<Rc<Node>>
+        if_false: Option<Rc<Node>>,
     },
     Loop {
         condition: Option<Rc<Node>>,
-        body: Rc<Node>
+        body: Rc<Node>,
     },
     GlobalDefinition {
         name: String,

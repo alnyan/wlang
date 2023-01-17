@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use ast::{
-    token::{BasicOperator, FromChar, Punctuation, Keyword},
+    token::{BasicOperator, FromChar, Keyword, Punctuation},
     Token,
 };
 
@@ -27,7 +27,9 @@ where
     LexerError: From<S::Error>,
 {
     const PUNCTUATION: &[char] = &[';', ',', '{', '}', '(', ')', '[', ']'];
-    const OPERATOR: &[char] = &['=', ':', '.', '?', '>', '<', '!', '+', '-', '*', '/', '%', '&', '|'];
+    const OPERATOR: &[char] = &[
+        '=', ':', '.', '?', '>', '<', '!', '+', '-', '*', '/', '%', '&', '|',
+    ];
 
     pub fn new(input: S) -> Self {
         Self { input }

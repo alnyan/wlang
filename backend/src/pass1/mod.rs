@@ -7,7 +7,7 @@ pub mod program;
 pub mod scope;
 
 pub use program::pass1_program;
-pub use scope::{Scope, BlockScope, FunctionScope};
+pub use scope::{BlockScope, FunctionScope, Scope};
 
 use super::{GlobalValue, LangFunction, Pass0Program};
 

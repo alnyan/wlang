@@ -367,7 +367,10 @@ impl<'a> Codegen<'a> {
                     todo!()
                 } else {
                     self.builder.build_return(None);
-                    let new_bb = self.module.get_context().append_basic_block(llvm_func.func, "ret");
+                    let new_bb = self
+                        .module
+                        .get_context()
+                        .append_basic_block(llvm_func.func, "ret");
                     self.builder.position_at_end(new_bb);
                     Ok(None)
                 }

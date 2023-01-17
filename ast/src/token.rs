@@ -57,9 +57,9 @@ pub enum BasicOperator {
     And,         // &&
     Or,          // ||
     BitAnd,      // &
-    BitOr,      // |
-    Shl,        // <<
-    Shr,        // >>
+    BitOr,       // |
+    Shl,         // <<
+    Shr,         // >>
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -2,6 +2,6 @@
 
 pub(crate) use ast::token;
 
+pub mod input;
 pub mod lexer;
 pub mod parser;
-pub mod input;
