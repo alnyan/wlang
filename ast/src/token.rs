@@ -53,6 +53,8 @@ pub enum BasicOperator {
     Eq,          // ==
     Ne,          // !=
     Comment,     // //
+    And,         // &&
+    Or,          // ||
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,11 +75,21 @@ impl Token {
 
 impl BasicOperator {
     pub const fn is_comparison(&self) -> bool {
-        matches!(self, Self::Ne | Self::Eq | Self::Gt | Self::Lt | Self::Ge | Self::Le)
+        matches!(
+            self,
+            Self::Ne | Self::Eq | Self::Gt | Self::Lt | Self::Ge | Self::Le
+        )
     }
 
     pub const fn is_arithmetic(&self) -> bool {
-        matches!(self, Self::Add | Self::Sub | Self::Mul | Self::Div | Self::Mod)
+        matches!(
+            self,
+            Self::Add | Self::Sub | Self::Mul | Self::Div | Self::Mod
+        )
+    }
+
+    pub const fn is_logic(&self) -> bool {
+        matches!(self, Self::And | Self::Or)
     }
 }
 
@@ -121,6 +133,8 @@ impl FromStr for BasicOperator {
             "==" => Ok(Self::Eq),
             "!=" => Ok(Self::Ne),
             "//" => Ok(Self::Comment),
+            "&&" => Ok(Self::And),
+            "||" => Ok(Self::Or),
             _ => Err(()),
         }
     }

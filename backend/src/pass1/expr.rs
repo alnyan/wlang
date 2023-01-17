@@ -92,6 +92,13 @@ fn pass1_basic_binary(
                 todo!()
             }
         }
+        BasicOperator::And | BasicOperator::Or => {
+            if lhs == rhs && lhs == &pass1.pass0.bool_type() {
+                Ok(pass1.pass0.bool_type())
+            } else {
+                todo!()
+            }
+        }
         _ => todo!(),
     }
 }
@@ -233,7 +240,9 @@ pub fn pass1_loop(
     body: &Rc<Node>,
 ) -> Result<Rc<TaggedExpr>, CompilerError> {
     let condition = if let Some(condition) = condition {
-        Some(pass1_expr(pass1, scope, condition)?)
+        let value = pass1_expr(pass1, scope, condition)?;
+        assert_eq!(value.ty, pass1.pass0.bool_type());
+        Some(value)
     } else {
         None
     };

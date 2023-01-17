@@ -20,7 +20,10 @@ fn precedence(op: &Token) -> u32 {
         Token::BasicOperator(BasicOperator::Assign) => 0,
         Token::BasicOperator(BasicOperator::Div) => 10,
         Token::BasicOperator(BasicOperator::Mod) => 10,
-        _ => panic!(),
+        Token::BasicOperator(BasicOperator::And) => 1,
+        Token::BasicOperator(BasicOperator::Or) => 1,
+        Token::BasicOperator(BasicOperator::Eq) => 2,
+        _ => panic!("{op:?}"),
     }
 }
 

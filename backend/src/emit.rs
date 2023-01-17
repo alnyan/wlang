@@ -278,6 +278,17 @@ impl<'a> Codegen<'a> {
                                     }
                                     _ => todo!()
                                 }
+                            } else if let Token::BasicOperator(op) = op && op.is_logic() {
+                                let llvm_lhs = llvm_lhs.into_int_value();
+                                let llvm_rhs = llvm_rhs.into_int_value();
+                                assert_eq!(lhs.ty, rhs.ty);
+                                assert_eq!(lhs.ty, self.pass1.pass0.bool_type());
+
+                                match op {
+                                    BasicOperator::And => self.builder.build_and(llvm_lhs, llvm_rhs, "").into(),
+                                    BasicOperator::Or => self.builder.build_or(llvm_lhs, llvm_rhs, "").into(),
+                                    _ => todo!()
+                                }
                             } else {
                                 todo!()
                             }

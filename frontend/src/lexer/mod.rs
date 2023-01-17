@@ -27,7 +27,7 @@ where
     LexerError: From<S::Error>,
 {
     const PUNCTUATION: &[char] = &[';', ',', '{', '}', '(', ')', '[', ']'];
-    const OPERATOR: &[char] = &['=', ':', '.', '?', '>', '<', '!', '+', '-', '*', '/', '%'];
+    const OPERATOR: &[char] = &['=', ':', '.', '?', '>', '<', '!', '+', '-', '*', '/', '%', '&', '|'];
 
     pub fn new(input: S) -> Self {
         Self { input }
