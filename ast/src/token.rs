@@ -55,6 +55,10 @@ pub enum BasicOperator {
     Comment,     // //
     And,         // &&
     Or,          // ||
+    BitAnd,      // &
+    BitOr,      // |
+    Shl,        // <<
+    Shr,        // >>
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -84,7 +88,7 @@ impl BasicOperator {
     pub const fn is_arithmetic(&self) -> bool {
         matches!(
             self,
-            Self::Add | Self::Sub | Self::Mul | Self::Div | Self::Mod
+            Self::Add | Self::Sub | Self::Mul | Self::Div | Self::Mod | Self::BitAnd | Self::BitOr
         )
     }
 
@@ -135,6 +139,10 @@ impl FromStr for BasicOperator {
             "//" => Ok(Self::Comment),
             "&&" => Ok(Self::And),
             "||" => Ok(Self::Or),
+            "&" => Ok(Self::BitAnd),
+            "|" => Ok(Self::BitOr),
+            "<<" => Ok(Self::Shl),
+            ">>" => Ok(Self::Shr),
             _ => Err(()),
         }
     }

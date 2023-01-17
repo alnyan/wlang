@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, fs::File, io::Write, path::Path, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
 
 use ast::{token::BasicOperator, Node, Token};
 use inkwell::{
@@ -14,7 +14,7 @@ use inkwell::{
     IntPredicate,
 };
 
-use crate::LangType;
+use crate::{CompilerOperation, LangType};
 
 use super::{
     pass1::Scope, CompilerError, FunctionImplementation, FunctionSignature, GlobalValue,
@@ -244,7 +244,7 @@ impl<'a> Codegen<'a> {
                                         self.builder.build_int_sub(llvm_lhs, llvm_rhs, "").into()
                                     }
                                     BasicOperator::Mul => {
-                                        todo!()
+                                        self.builder.build_int_mul(llvm_lhs, llvm_rhs, "").into()
                                     }
                                     BasicOperator::Div => {
                                         if signed {
@@ -260,6 +260,10 @@ impl<'a> Codegen<'a> {
                                             self.builder.build_int_unsigned_rem(llvm_lhs, llvm_rhs, "").into()
                                         }
                                     }
+                                    BasicOperator::BitAnd => self.builder.build_and(llvm_lhs, llvm_rhs, "").into(),
+                                    BasicOperator::BitOr => self.builder.build_or(llvm_lhs, llvm_rhs, "").into(),
+                                    BasicOperator::Shl => self.builder.build_left_shift(llvm_lhs, llvm_rhs, "").into(),
+                                    BasicOperator::Shr => self.builder.build_right_shift(llvm_lhs, llvm_rhs, false, "").into(),
                                     _ => todo!(),
                                 }
                             } else {
@@ -555,13 +559,24 @@ impl<'a> Codegen<'a> {
 
 pub fn compile_module<P: AsRef<Path>>(
     pass1: Pass1Program,
+    operation: CompilerOperation,
     name: &str,
     dst_obj: P,
 ) -> Result<(), CompilerError> {
     let context = Context::create();
     let mut cg = Codegen::new(&pass1, name, &context);
     cg.compile_module()?;
-    print!("{}", cg.module.print_to_string().to_string());
+
+    match operation {
+        CompilerOperation::EmitIntermediateBitcode => {
+            if !cg.module.write_bitcode_to_path(dst_obj.as_ref()) {
+                todo!();
+            }
+        }
+        CompilerOperation::EmitIntermediateSourceCode => {
+            cg.module.print_to_file(dst_obj).unwrap();
+        }
+    }
 
     Ok(())
 }

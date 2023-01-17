@@ -28,6 +28,12 @@ pub enum CompilerError {
     UndefinedType(String),
 }
 
+#[derive(Debug)]
+pub enum CompilerOperation {
+    EmitIntermediateBitcode,
+    EmitIntermediateSourceCode,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum LangIntType {
     U64,

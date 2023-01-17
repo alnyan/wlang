@@ -73,8 +73,12 @@ fn pass1_basic_binary(
         | BasicOperator::Sub
         | BasicOperator::Mul
         | BasicOperator::Div
-        | BasicOperator::Mod => {
-            if lhs == rhs {
+        | BasicOperator::Mod
+        | BasicOperator::BitOr
+        | BasicOperator::BitAnd
+        | BasicOperator::Shl
+        | BasicOperator::Shr => {
+            if lhs == rhs && lhs.is_integer() {
                 Ok(lhs.clone())
             } else {
                 todo!();
@@ -86,7 +90,7 @@ fn pass1_basic_binary(
         | BasicOperator::Gt
         | BasicOperator::Ne
         | BasicOperator::Eq => {
-            if lhs == rhs {
+            if lhs == rhs && lhs.is_integer() {
                 Ok(pass1.pass0.bool_type())
             } else {
                 todo!()
@@ -122,7 +126,7 @@ pub fn pass1_binary(
             pass1.pass0.void_type()
         }
         Token::BasicOperator(op) => pass1_basic_binary(pass1, scope, *op, &lhs.ty, &rhs.ty)?,
-        _ => panic!(),
+        _ => panic!("{expr:?}"),
     };
 
     Ok(Rc::new(TaggedExpr {

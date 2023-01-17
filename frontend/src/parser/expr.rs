@@ -87,6 +87,12 @@ def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
 
             Ok(Rc::new(Node::Block(items)))
         },
+        Token::Punctuation(Punctuation::LParen) => {
+            // TODO tuples
+            let inner = parse_expr(input)?;
+            expect!(input, Token::Punctuation(Punctuation::RParen), "RParen".to_owned());
+            Ok(inner)
+        }
         _ => Err(ParserError::UnexpectedToken(token, "Ident/IntegerLiteral/Keyword/LBrace".to_owned()))
     }
 });
@@ -101,6 +107,13 @@ def_parser!(pub maybe_binary<S>(input: &mut S, this_left: Rc<Node>) -> Rc<Node> 
     }
 
     input.next()?.unwrap();
+
+    if let Some(maybe_lparen) = input.peek()? && maybe_lparen == Token::Punctuation(Punctuation::LParen) {
+        input.next()?.unwrap();
+        let this_right = parse_expr(input)?;
+        expect!(input, Token::Punctuation(Punctuation::RParen), "RParen".to_owned());
+        return Ok(Rc::new(Node::Binary(this_op, this_left, this_right)));
+    }
 
     let this_right = parse_expr(input)?;
 
