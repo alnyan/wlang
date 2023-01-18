@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use inkwell::{
     context::ContextRef,
     types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, IntType},
@@ -20,6 +22,7 @@ pub enum LangType {
     Void,
     BoolType,
     IntType(LangIntType),
+    SizedArrayType(Rc<LangType>, usize),
 }
 
 #[allow(clippy::match_like_matches_macro)]
@@ -35,6 +38,13 @@ impl LangType {
         }
     }
 
+    pub fn make_sized_array_type(self: Rc<Self>, size: usize) -> Rc<LangType> {
+        if !self.is_integer() {
+            todo!();    // Nested arrays n stuff?
+        }
+        Rc::new(Self::SizedArrayType(self, size))
+    }
+
     pub fn make_llvm_function_type<'a>(
         &'a self,
         context: ContextRef<'a>,
@@ -44,6 +54,7 @@ impl LangType {
             Self::IntType(it) => it.as_llvm_basic_type(context).fn_type(arg_types, false),
             Self::BoolType => context.bool_type().fn_type(arg_types, false),
             Self::Void => context.void_type().fn_type(arg_types, false),
+            Self::SizedArrayType(_, _) => todo!("Array as function return type")
         }
     }
 
@@ -52,6 +63,7 @@ impl LangType {
             Self::IntType(it) => Some(it.as_llvm_basic_type(context)),
             Self::BoolType => Some(context.bool_type().into()),
             Self::Void => None,
+            Self::SizedArrayType(_, _) => todo!("Array")
         }
     }
 
@@ -62,6 +74,13 @@ impl LangType {
             Self::IntType(a) => {
                 if let Self::IntType(b) = other {
                     a == b
+                } else {
+                    false
+                }
+            }
+            Self::SizedArrayType(elem_ty, size) => {
+                if let Self::SizedArrayType(b_elem_ty, b_size) = other {
+                    size == b_size && elem_ty.is_compatible(b_elem_ty)
                 } else {
                     false
                 }

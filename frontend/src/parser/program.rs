@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ast::{
     token::{BasicOperator, Keyword, Punctuation},
-    Node, Token,
+    Node, Token, node::TypeNode,
 };
 
 use super::{
@@ -26,12 +26,27 @@ def_parser!(pub maybe_call<S>(input: &mut S, left: Rc<Node>) -> Rc<Node> {
 });
 
 def_parser!(pub parse_type<S>(input: &mut S) -> Rc<Node> {
+    if let Some(token) = input.peek()? && token == Token::Punctuation(Punctuation::LBracket) {
+        input.next()?.unwrap();
+        let element = parse_type(input)?;
+
+        expect!(input, Token::Punctuation(Punctuation::Semicolon), "Semicolon".to_owned());
+        expect!(input, Token::IntegerLiteral(value, extra), "IntegerLiteral".to_owned());
+
+        if !extra.is_empty() {
+            todo!()
+        }
+
+        expect!(input, Token::Punctuation(Punctuation::RBracket), "RBracket".to_owned());
+        return Ok(Rc::new(Node::Type(TypeNode::SizedArray(element, value as usize))));
+    }
+
     expect!(input, Token::Ident(name), "Identifier".to_owned());
 
     if let Some(token) = input.peek()? && token == Token::BasicOperator(BasicOperator::Lt) {
         todo!()
     } else {
-        Ok(Rc::new(Node::Type(name)))
+        Ok(Rc::new(Node::Type(TypeNode::Simple(name))))
     }
 });
 

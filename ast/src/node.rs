@@ -3,11 +3,19 @@ use std::rc::Rc;
 use crate::Token;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum TypeNode {
+    Simple(String),
+    SizedArray(Rc<Node>, usize),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Ident(String),
     IntegerLiteral(u64, String),
     Binary(Token, Rc<Node>, Rc<Node>),
-    Type(String),
+    Type(TypeNode),
+    Array(Vec<Rc<Node>>),
+    ArrayElement(Rc<Node>, Rc<Node>),
     Call(Rc<Node>, Vec<Rc<Node>>),
     Function {
         name: String,

@@ -315,6 +315,55 @@ impl<'a> Codegen<'a> {
                         self.builder.build_store(ptr, value.into_int_value());
                         ptr
                     }
+                    LangType::SizedArrayType(ty, size) => {
+                        let LangType::IntType(ty) = ty.as_ref() else {
+                            todo!("Array elements can only be integer types (currently)");
+                        };
+
+                        let (ty, _) = ty.as_llvm_int_type(self.module.get_context());
+                        let ptr = self
+                            .builder
+                            .build_alloca(ty.array_type((*size).try_into().unwrap()), name);
+
+                        let TaggedExprValue::Array(elements) = &value.value else {
+                            todo!();
+                        };
+                        assert!(!elements.is_empty());
+
+                        // If value is a const-int array, use LLVM's const_array,
+                        //  otherwise, use per-element assignment
+                        if let Ok(const_ints) = elements
+                            .iter()
+                            .map(|e| match &e.value {
+                                TaggedExprValue::IntegerLiteral(int) => {
+                                    Ok(ty.const_int(*int, false))
+                                }
+                                _ => Err(()),
+                            })
+                            .collect::<Result<Vec<_>, _>>()
+                        {
+                            let const_array = ty.const_array(&const_ints);
+
+                            self.builder.build_store(ptr, const_array);
+                        } else {
+                            let zero_index = self.module.get_context().i64_type().const_zero();
+                            for (i, elem) in elements.iter().enumerate() {
+                                let elem = self.compile_expr(llvm_func, loop_exit, elem)?.unwrap();
+                                let index = self
+                                    .module
+                                    .get_context()
+                                    .i64_type()
+                                    .const_int(i as u64, false);
+                                let gep = unsafe {
+                                    self.builder.build_in_bounds_gep(ptr, &[zero_index, index], "")
+                                };
+
+                                self.builder.build_store(gep, elem.into_int_value());
+                            }
+                        }
+
+                        ptr
+                    }
                     _ => todo!(),
                 };
 
@@ -344,7 +393,13 @@ impl<'a> Codegen<'a> {
                 };
 
                 Ok(Some(match ptr {
-                    IdentValue::Variable(ptr) => self.builder.build_load(ptr, "").into(),
+                    IdentValue::Variable(ptr) => match expr.ty.as_ref() {
+                        LangType::IntType(_) | LangType::BoolType => {
+                            self.builder.build_load(ptr, "").into()
+                        }
+                        LangType::SizedArrayType(_, _) => ptr.into(),
+                        LangType::Void => todo!("Reference to void-typed identifier?"),
+                    },
                     IdentValue::Argument(val) => val.into(),
                 }))
             }
@@ -461,6 +516,36 @@ impl<'a> Codegen<'a> {
                 }
 
                 Ok(None)
+            }
+            TaggedExprValue::Array(_elements) => {
+                todo!()
+            }
+            TaggedExprValue::ArrayElement(array, index) => {
+                let array = self
+                    .compile_expr(llvm_func, loop_exit, array)?
+                    .unwrap()
+                    .into_pointer_value();
+                let index = self
+                    .compile_expr(llvm_func, loop_exit, index)?
+                    .unwrap()
+                    .into_int_value();
+
+                // TODO emit bounds check here
+
+                let zero_index = self.module.get_context().i64_type().const_zero();
+
+                let gep = unsafe {
+                    self.builder
+                        .build_gep(array, &[zero_index, index], "")
+                };
+
+                Ok(Some(match expr.ty.as_ref() {
+                    LangType::IntType(_) | LangType::BoolType => {
+                        self.builder.build_load(gep, "").into()
+                    }
+                    LangType::SizedArrayType(_, _) => todo!("Nested array indexing"),
+                    LangType::Void => todo!("Void-typed array indexing?"),
+                }))
             }
         }
     }

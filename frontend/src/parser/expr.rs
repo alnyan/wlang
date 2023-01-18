@@ -6,7 +6,7 @@ use ast::{
 };
 
 use super::{
-    combinator::parse_many0,
+    combinator::{parse_delimited, parse_many0},
     program::{maybe_call, parse_block, parse_type},
     ParserError,
 };
@@ -105,6 +105,14 @@ def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
             expect!(input, Token::Punctuation(Punctuation::RParen), "RParen".to_owned());
             Ok(inner)
         }
+        Token::Punctuation(Punctuation::LBracket) => {
+            let items = parse_delimited(
+                input,
+                parse_expr,
+                Token::Punctuation(Punctuation::RBracket),
+                Token::Punctuation(Punctuation::Comma))?;
+            Ok(Rc::new(Node::Array(items)))
+        }
         _ => Err(ParserError::UnexpectedToken(token, "Ident/IntegerLiteral/Keyword/LBrace".to_owned()))
     }
 });
@@ -144,9 +152,21 @@ def_parser!(pub maybe_binary<S>(input: &mut S, this_left: Rc<Node>) -> Rc<Node> 
     }
 });
 
+def_parser!(pub maybe_array_element<S>(input: &mut S, expr: Rc<Node>) -> Rc<Node> {
+    if let Some(token) = input.peek()? && token == Token::Punctuation(Punctuation::LBracket) {
+        input.next()?.unwrap();
+        let index = parse_expr(input)?;
+        expect!(input, Token::Punctuation(Punctuation::RBracket), "RBracket".to_owned());
+        Ok(Rc::new(Node::ArrayElement(expr, index)))
+    } else {
+        Ok(expr)
+    }
+});
+
 def_parser!(pub parse_expr<S>(input: &mut S) -> Rc<Node> {
     let atom = parse_atom(input)?;
-    let call = maybe_call(input, atom)?;
+    let array = maybe_array_element(input, atom)?;
+    let call = maybe_call(input, array)?;
     maybe_binary(input, call)
 });
 

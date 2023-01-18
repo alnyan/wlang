@@ -92,6 +92,8 @@ pub enum TaggedExprValue {
         condition: Option<Rc<TaggedExpr>>,
         body: Rc<TaggedExpr>,
     },
+    Array(Vec<Rc<TaggedExpr>>),
+    ArrayElement(Rc<TaggedExpr>, Rc<TaggedExpr>),
     BreakLoop,
     Return(Option<Rc<TaggedExpr>>),
     IntegerLiteral(u64),

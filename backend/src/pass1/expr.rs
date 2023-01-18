@@ -1,20 +1,22 @@
 use std::{cell::RefCell, rc::Rc};
 
-use ast::{token::BasicOperator, Node, Token};
+use ast::{node::TypeNode, token::BasicOperator, Node, Token};
 
 use crate::{CompilerError, LangType, LocalValue, TaggedExpr, TaggedExprValue};
 
 use super::{Pass1Program, Scope};
 
 pub fn pass1_type(pass1: &Pass1Program, ty: &Rc<Node>) -> Result<Rc<LangType>, CompilerError> {
-    let Node::Type(name) = ty.as_ref() else {
+    let Node::Type(ty) = ty.as_ref() else {
         return Err(CompilerError::UnhandledNode(ty.clone()));
     };
 
-    pass1
-        .pass0
-        .named_type(name)
-        .ok_or(CompilerError::UndefinedType(name.to_string()))
+    match ty {
+        TypeNode::Simple(name) => Ok(pass1.pass0.named_type(name).unwrap()),
+        TypeNode::SizedArray(element_ty, size) => {
+            Ok(pass1_type(pass1, element_ty)?.make_sized_array_type(*size))
+        }
+    }
 }
 
 pub fn pass1_local_definition(
@@ -372,6 +374,51 @@ pub fn pass1_expr(
             ast_node: expr.clone(),
             value: TaggedExprValue::BreakLoop,
         })),
+        Node::ArrayElement(array, index) => {
+            let array = pass1_expr(pass1, scope, array)?;
+            let index = pass1_expr(pass1, scope, index)?;
+
+            if !index.ty.is_compatible(&pass1.pass0.i64_type()) {
+                todo!("Index type is not an i64 (TODO: usize)");
+            }
+
+            let LangType::SizedArrayType(elem_ty, _) = array.ty.as_ref() else {
+                todo!("Indexed value is not an array");
+            };
+
+            Ok(Rc::new(TaggedExpr {
+                ty: elem_ty.clone(),
+                fn_index: scope.borrow().function_index(),
+                scope_index: scope.borrow().index(),
+                ast_node: expr.clone(),
+                value: TaggedExprValue::ArrayElement(array, index),
+            }))
+        }
+        Node::Array(elements) => {
+            let elements = elements
+                .iter()
+                .map(|elem| pass1_expr(pass1, scope, elem))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            if elements.is_empty() {
+                todo!();
+            }
+
+            let first_ty = elements[0].ty.clone();
+            for elem in elements.iter() {
+                if !elem.ty.is_compatible(&first_ty) {
+                    todo!();
+                }
+            }
+
+            Ok(Rc::new(TaggedExpr {
+                ty: first_ty.make_sized_array_type(elements.len()),
+                fn_index: scope.borrow().function_index(),
+                scope_index: scope.borrow().index(),
+                ast_node: expr.clone(),
+                value: TaggedExprValue::Array(elements),
+            }))
+        }
         Node::Return(return_expr) => {
             let parent_ty = scope.borrow().function_return_type();
 
