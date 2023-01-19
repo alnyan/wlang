@@ -11,7 +11,7 @@ use inkwell::{
         AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
         GlobalValue as LlvmGlobalValue, PointerValue,
     },
-    IntPredicate,
+    AddressSpace, IntPredicate,
 };
 
 use crate::{
@@ -251,6 +251,18 @@ impl<'a> Codegen<'a> {
                             todo!()
                         }
                     }
+                    LangType::Pointer(_) => {
+                        if &Token::BasicOperator(BasicOperator::Add) == op {
+                            // TODO better pointer arithmetic through GEP
+                            let llvm_lhs = llvm_lhs.into_pointer_value();
+                            let llvm_rhs = llvm_rhs.into_int_value();
+
+                            let value = unsafe { self.builder.build_gep(llvm_lhs, &[llvm_rhs], "") };
+                            value.into()
+                        } else {
+                            todo!()
+                        }
+                    }
                     LangType::BoolType => {
                         if let Token::BasicOperator(op) = op && op.is_comparison() {
                             assert!(lhs.ty.is_compatible(&rhs.ty));
@@ -374,6 +386,10 @@ impl<'a> Codegen<'a> {
                     todo!()
                 }
             }
+            TaggedExprValue::StringLiteral(value) => {
+                let s = self.builder.build_global_string_ptr(value, "");
+                Ok(Some(s.as_pointer_value().as_any_value_enum()))
+            }
             TaggedExprValue::Ident(name) => {
                 let ptr = self.ident_ptr(llvm_func, &scope, name).unwrap();
                 Ok(Some(match ptr {
@@ -396,6 +412,11 @@ impl<'a> Codegen<'a> {
             TaggedExprValue::BreakLoop => {
                 if let Some(loop_exit) = loop_exit {
                     self.builder.build_unconditional_branch(loop_exit);
+                    let new_bb = self
+                        .module
+                        .get_context()
+                        .append_basic_block(llvm_func.func, "break");
+                    self.builder.position_at_end(new_bb);
                     Ok(None)
                 } else {
                     todo!()
@@ -544,6 +565,9 @@ impl<'a> Codegen<'a> {
             }
             TaggedExprValue::Cast(value, target_ty) => {
                 let value = self.compile_expr(llvm_func, loop_exit, value)?.unwrap();
+
+                // TODO non-int values
+
                 if !value.is_int_value() {
                     todo!();
                 }
@@ -563,6 +587,7 @@ impl<'a> Codegen<'a> {
 
                 match rhs {
                     AnyValueEnum::IntValue(iv) => self.builder.build_store(lhs, iv),
+                    AnyValueEnum::PointerValue(pv) => self.builder.build_store(lhs, pv),
                     _ => todo!(),
                 };
 
@@ -635,6 +660,29 @@ impl<'a> Codegen<'a> {
                 let (ty, _) = ty.as_llvm_int_type(self.module.get_context());
 
                 ptr.set_initializer(&ty.const_int(*value, false).as_basic_value_enum());
+            }
+            Node::StringLiteral(value) => {
+                let value = self
+                    .module
+                    .get_context()
+                    .const_string(value.as_bytes(), true);
+                let gstr = self.module.add_global(value.get_type(), None, "");
+                gstr.set_unnamed_addr(true);
+                gstr.set_linkage(Linkage::Private);
+                gstr.set_alignment(1);
+                gstr.set_constant(true);
+                gstr.set_initializer(&value);
+
+                let zero_index = self.module.get_context().i32_type().const_zero();
+                let gep = unsafe {
+                    self.builder.build_in_bounds_gep(
+                        gstr.as_pointer_value(),
+                        &[zero_index, zero_index],
+                        "",
+                    )
+                };
+
+                ptr.set_initializer(&gep);
             }
             _ => todo!(),
         };

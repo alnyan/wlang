@@ -72,6 +72,13 @@ fn pass1_basic_binary(
     rhs: &Rc<LangType>,
 ) -> Result<Rc<LangType>, CompilerError> {
     match op {
+        BasicOperator::Add if lhs.is_pointer() => {
+            if !rhs.is_compatible(&pass1.pass0.i64_type()) {
+                todo!()
+            } else {
+                Ok(lhs.clone())
+            }
+        }
         BasicOperator::Add
         | BasicOperator::Sub
         | BasicOperator::Mul
@@ -360,6 +367,13 @@ pub fn pass1_expr(
             scope_index: scope.borrow().index(),
             fn_index: scope.borrow().function_index(),
             value: TaggedExprValue::IntegerLiteral(*value),
+        })),
+        Node::StringLiteral(value) => Ok(Rc::new(TaggedExpr {
+            ty: pass1.pass0.i8_type().make_pointer_type(),
+            ast_node: expr.clone(),
+            fn_index: scope.borrow().function_index(),
+            scope_index: scope.borrow().index(),
+            value: TaggedExprValue::StringLiteral(value.clone())
         })),
         Node::Condition {
             condition,

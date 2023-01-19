@@ -71,6 +71,7 @@ pub enum Token {
     Keyword(Keyword),
     Ident(String),
     IntegerLiteral(u64, String),
+    StringLiteral(String),
 }
 
 impl Token {

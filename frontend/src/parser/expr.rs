@@ -87,6 +87,7 @@ def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
     match token {
         Token::Ident(name) => Ok(Rc::new(Node::Ident(name))),
         Token::IntegerLiteral(value, extra) => Ok(Rc::new(Node::IntegerLiteral(value, extra))),
+        Token::StringLiteral(value) => Ok(Rc::new(Node::StringLiteral(value))),
         Token::Keyword(Keyword::Let) => parse_local_definition(input),
         Token::Keyword(Keyword::If) => parse_condition(input),
         Token::Keyword(Keyword::While) => parse_while_loop(input),

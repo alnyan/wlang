@@ -37,6 +37,7 @@ pub enum TaggedExprValue {
     BreakLoop,
     Return(Option<Rc<TaggedExpr>>),
     IntegerLiteral(u64),
+    StringLiteral(String),
     Ident(String),
     Call(Rc<TaggedExpr>, Vec<Rc<TaggedExpr>>),
 }

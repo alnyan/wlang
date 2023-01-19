@@ -22,6 +22,36 @@ pub enum LexerError {
     Eof,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum EscapedCharacter {
+    Newline,
+}
+
+pub enum StringElement {
+    Character(char),
+    EscapedCharacter(EscapedCharacter),
+    Terminator
+}
+
+impl TryFrom<char> for EscapedCharacter {
+    type Error = LexerError;
+
+    fn try_from(value: char) -> Result<Self, Self::Error> {
+        match value {
+            'n' => Ok(EscapedCharacter::Newline),
+            _ => Err(todo!())
+        }
+    }
+}
+
+impl From<EscapedCharacter> for char {
+    fn from(value: EscapedCharacter) -> Self {
+        match value {
+            EscapedCharacter::Newline => '\n',
+        }
+    }
+}
+
 impl<S: Input<char>> Lexer<S>
 where
     LexerError: From<S::Error>,
@@ -157,6 +187,40 @@ where
         }
     }
 
+    fn lex_string_element(&mut self) -> Result<StringElement, LexerError> {
+        let Some(c) = self.input.next()? else {
+            return Err(LexerError::Eof);
+        };
+
+        match c {
+            '\\' => {
+                let Some(c) = self.input.next()? else {
+                    return Err(LexerError::Eof);
+                };
+
+                EscapedCharacter::try_from(c).map(StringElement::EscapedCharacter)
+            },
+            '"' => Ok(StringElement::Terminator),
+            _ => Ok(StringElement::Character(c))
+        }
+    }
+
+    fn lex_string_literal(&mut self) -> Result<Token, LexerError> {
+        let mut buf = String::new();
+
+        loop {
+            let e = self.lex_string_element()?;
+
+            match e {
+                StringElement::Character(c) => buf.push(c),
+                StringElement::EscapedCharacter(c) => buf.push(char::from(c)),
+                StringElement::Terminator => break,
+            }
+        }
+
+        Ok(Token::StringLiteral(buf))
+    }
+
     pub fn lex_token(&mut self) -> Result<Option<Token>, LexerError> {
         let c = loop {
             self.skip_whitespace()?;
@@ -185,7 +249,9 @@ where
         } else {
             self.input.next().unwrap();
 
-            if Self::PUNCTUATION.contains(&c) {
+            if c == '"' {
+                self.lex_string_literal()
+            } else if Self::PUNCTUATION.contains(&c) {
                 Ok(Token::Punctuation(Punctuation::from_char(c).unwrap()))
             } else {
                 todo!()

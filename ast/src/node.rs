@@ -15,6 +15,7 @@ pub enum Node {
     Reference(Rc<Node>),
     Dereference(Rc<Node>),
     IntegerLiteral(u64, String),
+    StringLiteral(String),
     Binary(Token, Rc<Node>, Rc<Node>),
     Type(TypeNode),
     Array(Vec<Rc<Node>>),

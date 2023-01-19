@@ -11,6 +11,7 @@ use super::{CompilerError, LangType};
 pub struct Pass0Program {
     types: HashMap<String, Rc<LangType>>,
     bool_type: Rc<LangType>,
+    i8_type: Rc<LangType>,
     i64_type: Rc<LangType>,
     void_type: Rc<LangType>,
 }
@@ -28,6 +29,10 @@ impl Pass0Program {
         self.bool_type.clone()
     }
 
+    pub fn i8_type(&self) -> Rc<LangType> {
+        self.i8_type.clone()
+    }
+
     pub fn i64_type(&self) -> Rc<LangType> {
         self.i64_type.clone()
     }
@@ -43,6 +48,7 @@ impl Pass0Program {
 
 pub fn pass0_program(_items: &[Rc<Node>]) -> Result<Pass0Program, CompilerError> {
     // TODO custom types
+    let i8_type = Rc::new(LangType::IntType(LangIntType::I8));
     let i64_type = Rc::new(LangType::IntType(LangIntType::I64));
     let bool_type = Rc::new(LangType::BoolType);
 
@@ -57,7 +63,7 @@ pub fn pass0_program(_items: &[Rc<Node>]) -> Result<Pass0Program, CompilerError>
                 "i16".to_owned(),
                 Rc::new(LangType::IntType(LangIntType::I16)),
             ),
-            ("i8".to_owned(), Rc::new(LangType::IntType(LangIntType::I8))),
+            ("i8".to_owned(), i8_type.clone()),
             (
                 "u64".to_owned(),
                 Rc::new(LangType::IntType(LangIntType::U64)),
@@ -72,6 +78,7 @@ pub fn pass0_program(_items: &[Rc<Node>]) -> Result<Pass0Program, CompilerError>
             ),
             ("u8".to_owned(), Rc::new(LangType::IntType(LangIntType::U8))),
         ]),
+        i8_type,
         i64_type,
         bool_type,
         void_type: Rc::new(LangType::Void),

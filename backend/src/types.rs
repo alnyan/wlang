@@ -32,6 +32,10 @@ impl LangType {
         matches!(self, Self::IntType(_))
     }
 
+    pub const fn is_pointer(&self) -> bool {
+        matches!(self, Self::Pointer(_))
+    }
+
     pub fn as_basic_metadata_type<'a>(&self, context: ContextRef<'a>) -> BasicMetadataTypeEnum<'a> {
         match self {
             Self::IntType(it) => it.as_llvm_basic_metadata_type(context),
