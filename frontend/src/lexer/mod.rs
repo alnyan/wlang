@@ -19,6 +19,7 @@ pub struct LexerInput<S: Input<char>> {
 #[derive(Debug, PartialEq)]
 pub enum LexerError {
     Input(String),
+    UnknownEscapeCharacter(char),
     Eof,
 }
 
@@ -39,7 +40,7 @@ impl TryFrom<char> for EscapedCharacter {
     fn try_from(value: char) -> Result<Self, Self::Error> {
         match value {
             'n' => Ok(EscapedCharacter::Newline),
-            _ => Err(todo!())
+            _ => Err(LexerError::UnknownEscapeCharacter(value))
         }
     }
 }

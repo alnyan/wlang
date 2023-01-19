@@ -73,7 +73,7 @@ fn pass1_basic_binary(
 ) -> Result<Rc<LangType>, CompilerError> {
     match op {
         BasicOperator::Add if lhs.is_pointer() => {
-            if !rhs.is_compatible(&pass1.pass0.i64_type()) {
+            if !rhs.is_compatible(&pass1.pass0.u64_type()) {
                 todo!()
             } else {
                 Ok(lhs.clone())

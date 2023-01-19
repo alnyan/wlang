@@ -1,25 +1,19 @@
-extern fn putchar(ch: i8);
-extern fn puts(s: *i8);
+extern fn printf(s: *i8, v: *i8);
 
-static X: *i8 = "test1";
-
-fn my_puts(s: *i8) {
-    let p: *i8 = s;
-    while 1 == 1 {
-        let c: i8 = *p;
-
-        if c == 0i8 {
-            break;
-        }
-
-        putchar(c);
-
-        p = p + 1;
+fn my_memcpy(dst: *i8, src: *i8, count: u64) -> *i8 {
+    let d0: *i8 = dst;
+    let i: u64 = 0u64;
+    while i < count {
+        *(dst + i) = *(src + i);
+        i = i + 1u64;
     }
-    putchar(10i8);
+    dst
 }
 
-fn main() -> i64 {
-    my_puts(X);
-    0
+fn main() -> u64 {
+    let array: [i8; 6] = [0i8, 0i8, 0i8, 0i8, 0i8, 0i8];
+    my_memcpy(&array[0], "Hello", 5u64);
+
+    printf("%s\n", &array[0]);
+    0u64
 }

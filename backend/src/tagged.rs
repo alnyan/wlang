@@ -45,8 +45,8 @@ pub enum TaggedExprValue {
 #[derive(Debug, Clone)]
 pub enum TaggedLvalueExprValue {
     Ident(String),
-    Dereference(Rc<TaggedLvalueExpr>),
-    ArrayElement(Rc<TaggedLvalueExpr>, Rc<TaggedExpr>)
+    Dereference(Rc<TaggedExpr>),
+    ArrayElement(Rc<TaggedLvalueExpr>, Rc<TaggedExpr>),
 }
 
 #[derive(Derivative)]

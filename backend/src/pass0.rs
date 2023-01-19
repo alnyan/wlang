@@ -13,6 +13,7 @@ pub struct Pass0Program {
     bool_type: Rc<LangType>,
     i8_type: Rc<LangType>,
     i64_type: Rc<LangType>,
+    u64_type: Rc<LangType>,
     void_type: Rc<LangType>,
 }
 
@@ -37,6 +38,10 @@ impl Pass0Program {
         self.i64_type.clone()
     }
 
+    pub fn u64_type(&self) -> Rc<LangType> {
+        self.u64_type.clone()
+    }
+
     pub fn integer_literal_extra_type(&self, name: &str) -> Option<Rc<LangType>> {
         if name.is_empty() {
             Some(self.i64_type())
@@ -50,6 +55,7 @@ pub fn pass0_program(_items: &[Rc<Node>]) -> Result<Pass0Program, CompilerError>
     // TODO custom types
     let i8_type = Rc::new(LangType::IntType(LangIntType::I8));
     let i64_type = Rc::new(LangType::IntType(LangIntType::I64));
+    let u64_type = Rc::new(LangType::IntType(LangIntType::U64));
     let bool_type = Rc::new(LangType::BoolType);
 
     Ok(Pass0Program {
@@ -64,10 +70,7 @@ pub fn pass0_program(_items: &[Rc<Node>]) -> Result<Pass0Program, CompilerError>
                 Rc::new(LangType::IntType(LangIntType::I16)),
             ),
             ("i8".to_owned(), i8_type.clone()),
-            (
-                "u64".to_owned(),
-                Rc::new(LangType::IntType(LangIntType::U64)),
-            ),
+            ("u64".to_owned(), u64_type.clone()),
             (
                 "u32".to_owned(),
                 Rc::new(LangType::IntType(LangIntType::U32)),
@@ -80,6 +83,7 @@ pub fn pass0_program(_items: &[Rc<Node>]) -> Result<Pass0Program, CompilerError>
         ]),
         i8_type,
         i64_type,
+        u64_type,
         bool_type,
         void_type: Rc::new(LangType::Void),
     })

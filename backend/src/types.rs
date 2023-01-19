@@ -5,9 +5,10 @@ use inkwell::{
     types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, IntType},
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[repr(usize)]
 pub enum LangIntType {
-    U64,
+    U64 = 0,
     I64,
     U32,
     I32,
@@ -67,10 +68,10 @@ impl LangType {
     ) -> FunctionType<'a> {
         match self {
             Self::IntType(it) => it.as_llvm_basic_type(context).fn_type(arg_types, false),
+            Self::Pointer(_) => self.as_llvm_basic_type(context).unwrap().fn_type(arg_types, false),
             Self::BoolType => context.bool_type().fn_type(arg_types, false),
             Self::Void => context.void_type().fn_type(arg_types, false),
             Self::SizedArrayType(_, _) => todo!("Array as function return type"),
-            Self::Pointer(_) => todo!("Pointer as function return type"),
         }
     }
 
