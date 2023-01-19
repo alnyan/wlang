@@ -4,7 +4,7 @@ use ast::{node::TypeNode, token::BasicOperator, Node, Token};
 
 use crate::{CompilerError, LangType, LocalValue, TaggedExpr, TaggedExprValue};
 
-use super::{Pass1Program, Scope};
+use super::{lvalue::pass1_lvalue, Pass1Program, Scope};
 
 pub fn pass1_type(pass1: &Pass1Program, ty: &Rc<Node>) -> Result<Rc<LangType>, CompilerError> {
     let Node::Type(ty) = ty.as_ref() else {
@@ -16,6 +16,7 @@ pub fn pass1_type(pass1: &Pass1Program, ty: &Rc<Node>) -> Result<Rc<LangType>, C
         TypeNode::SizedArray(element_ty, size) => {
             Ok(pass1_type(pass1, element_ty)?.make_sized_array_type(*size))
         }
+        TypeNode::Pointer(inner) => Ok(pass1_type(pass1, inner)?.make_pointer_type()),
     }
 }
 
@@ -117,31 +118,48 @@ pub fn pass1_binary(
     lhs: &Rc<Node>,
     rhs: &Rc<Node>,
 ) -> Result<Rc<TaggedExpr>, CompilerError> {
-    let lhs = pass1_expr(pass1, scope, lhs)?;
-    let rhs = pass1_expr(pass1, scope, rhs)?;
+    if let Token::BasicOperator(BasicOperator::As) = op {
+        let lhs = pass1_expr(pass1, scope, lhs)?;
+        let target_ty = pass1_type(pass1, rhs)?;
+        Ok(Rc::new(TaggedExpr {
+            ty: target_ty.clone(),
+            fn_index: scope.borrow().function_index(),
+            scope_index: scope.borrow().index(),
+            ast_node: expr.clone(),
+            value: TaggedExprValue::Cast(lhs, target_ty),
+        }))
+    } else if let Token::BasicOperator(BasicOperator::Assign) = op {
+        let lhs = pass1_lvalue(pass1, scope, lhs)?;
+        let rhs = pass1_expr(pass1, scope, rhs)?;
 
-    let ty = match op {
-        Token::BasicOperator(BasicOperator::Assign) => {
-            if !rhs.ty.is_compatible(&lhs.ty) {
-                todo!();
-            }
-            pass1.pass0.void_type()
-        }
-        Token::BasicOperator(op) => pass1_basic_binary(pass1, scope, *op, &lhs.ty, &rhs.ty)?,
-        _ => panic!("{expr:?}"),
-    };
+        Ok(Rc::new(TaggedExpr {
+            ty: pass1.pass0.void_type(),
+            fn_index: scope.borrow().function_index(),
+            scope_index: scope.borrow().index(),
+            ast_node: expr.clone(),
+            value: TaggedExprValue::Assign(lhs, rhs)
+        }))
+    } else {
+        let lhs = pass1_expr(pass1, scope, lhs)?;
+        let rhs = pass1_expr(pass1, scope, rhs)?;
 
-    Ok(Rc::new(TaggedExpr {
-        ty,
-        ast_node: expr.clone(),
-        scope_index: scope.borrow().index(),
-        fn_index: scope.borrow().function_index(),
-        value: TaggedExprValue::Binary {
-            op: op.clone(),
-            lhs,
-            rhs,
-        },
-    }))
+        let ty = match op {
+            Token::BasicOperator(op) => pass1_basic_binary(pass1, scope, *op, &lhs.ty, &rhs.ty)?,
+            _ => panic!("{expr:?}"),
+        };
+
+        Ok(Rc::new(TaggedExpr {
+            ty,
+            ast_node: expr.clone(),
+            scope_index: scope.borrow().index(),
+            fn_index: scope.borrow().function_index(),
+            value: TaggedExprValue::Binary {
+                op: op.clone(),
+                lhs,
+                rhs,
+            },
+        }))
+    }
 }
 
 pub fn pass1_block(
@@ -315,16 +333,7 @@ pub fn pass1_expr(
 ) -> Result<Rc<TaggedExpr>, CompilerError> {
     match expr.as_ref() {
         Node::Ident(name) => {
-            let ty = if let Some(local) = scope.borrow().local(name) {
-                local.ty
-            } else if let Some(global) = pass1.globals.get(name) {
-                global.ty.clone()
-            } else if pass1.function(name).is_some() {
-                pass1.pass0.void_type()
-            } else {
-                todo!()
-            };
-
+            let ty = pass1_ident_type(pass1, scope, name)?;
             Ok(Rc::new(TaggedExpr {
                 ty,
                 ast_node: expr.clone(),
@@ -419,6 +428,31 @@ pub fn pass1_expr(
                 value: TaggedExprValue::Array(elements),
             }))
         }
+        Node::Dereference(ptr) => {
+            let ptr = pass1_expr(pass1, scope, ptr)?;
+
+            match ptr.ty.as_ref() {
+                LangType::Pointer(inner_ty) => Ok(Rc::new(TaggedExpr {
+                    ty: inner_ty.clone(),
+                    fn_index: scope.borrow().function_index(),
+                    scope_index: scope.borrow().index(),
+                    ast_node: expr.clone(),
+                    value: TaggedExprValue::Dereference(ptr),
+                })),
+                _ => todo!(),
+            }
+        }
+        Node::Reference(lvalue) => {
+            let lvalue = pass1_lvalue(pass1, scope, lvalue)?;
+
+            Ok(Rc::new(TaggedExpr {
+                ty: lvalue.ty.clone().make_pointer_type(),
+                fn_index: scope.borrow().function_index(),
+                scope_index: scope.borrow().index(),
+                ast_node: expr.clone(),
+                value: TaggedExprValue::Reference(lvalue)
+            }))
+        }
         Node::Return(return_expr) => {
             let parent_ty = scope.borrow().function_return_type();
 
@@ -447,5 +481,21 @@ pub fn pass1_expr(
             }))
         }
         _ => todo!("{:?}", expr),
+    }
+}
+
+pub fn pass1_ident_type(
+    pass1: &Pass1Program,
+    scope: &Rc<RefCell<dyn Scope>>,
+    name: &str,
+) -> Result<Rc<LangType>, CompilerError> {
+    if let Some(local) = scope.borrow().local(name) {
+        Ok(local.ty)
+    } else if let Some(global) = pass1.globals.get(name) {
+        Ok(global.ty.clone())
+    } else if pass1.function(name).is_some() {
+        Ok(pass1.pass0.void_type())
+    } else {
+        todo!()
     }
 }

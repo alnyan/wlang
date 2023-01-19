@@ -5,6 +5,7 @@ use std::collections::HashMap;
 pub mod expr;
 pub mod program;
 pub mod scope;
+pub mod lvalue;
 
 pub use program::pass1_program;
 pub use scope::{BlockScope, FunctionScope, Scope};

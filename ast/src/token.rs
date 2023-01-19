@@ -60,6 +60,7 @@ pub enum BasicOperator {
     BitOr,       // |
     Shl,         // <<
     Shr,         // >>
+    As,          // as
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -144,6 +145,7 @@ impl FromStr for BasicOperator {
             "|" => Ok(Self::BitOr),
             "<<" => Ok(Self::Shl),
             ">>" => Ok(Self::Shr),
+            "as" => Ok(Self::As),
             _ => Err(()),
         }
     }

@@ -23,6 +23,7 @@ pub enum LangType {
     BoolType,
     IntType(LangIntType),
     SizedArrayType(Rc<LangType>, usize),
+    Pointer(Rc<LangType>),
 }
 
 #[allow(clippy::match_like_matches_macro)]
@@ -34,15 +35,25 @@ impl LangType {
     pub fn as_basic_metadata_type<'a>(&self, context: ContextRef<'a>) -> BasicMetadataTypeEnum<'a> {
         match self {
             Self::IntType(it) => it.as_llvm_basic_metadata_type(context),
+            Self::Pointer(t) => match t.as_basic_metadata_type(context) {
+                BasicMetadataTypeEnum::IntType(t) => {
+                    BasicMetadataTypeEnum::PointerType(t.ptr_type(Default::default()))
+                }
+                _ => todo!(),
+            },
             _ => todo!(),
         }
     }
 
     pub fn make_sized_array_type(self: Rc<Self>, size: usize) -> Rc<LangType> {
         if !self.is_integer() {
-            todo!();    // Nested arrays n stuff?
+            todo!(); // Nested arrays n stuff?
         }
         Rc::new(Self::SizedArrayType(self, size))
+    }
+
+    pub fn make_pointer_type(self: Rc<Self>) -> Rc<LangType> {
+        Rc::new(Self::Pointer(self))
     }
 
     pub fn make_llvm_function_type<'a>(
@@ -54,7 +65,8 @@ impl LangType {
             Self::IntType(it) => it.as_llvm_basic_type(context).fn_type(arg_types, false),
             Self::BoolType => context.bool_type().fn_type(arg_types, false),
             Self::Void => context.void_type().fn_type(arg_types, false),
-            Self::SizedArrayType(_, _) => todo!("Array as function return type")
+            Self::SizedArrayType(_, _) => todo!("Array as function return type"),
+            Self::Pointer(_) => todo!("Pointer as function return type"),
         }
     }
 
@@ -63,7 +75,14 @@ impl LangType {
             Self::IntType(it) => Some(it.as_llvm_basic_type(context)),
             Self::BoolType => Some(context.bool_type().into()),
             Self::Void => None,
-            Self::SizedArrayType(_, _) => todo!("Array")
+            Self::SizedArrayType(_, _) => todo!("Array"),
+            Self::Pointer(inner) => match inner.as_llvm_basic_type(context) {
+                Some(BasicTypeEnum::IntType(t)) => {
+                    Some(t.ptr_type(Default::default()).as_basic_type_enum())
+                }
+                None => None,
+                _ => todo!(),
+            },
         }
     }
 
@@ -81,6 +100,13 @@ impl LangType {
             Self::SizedArrayType(elem_ty, size) => {
                 if let Self::SizedArrayType(b_elem_ty, b_size) = other {
                     size == b_size && elem_ty.is_compatible(b_elem_ty)
+                } else {
+                    false
+                }
+            }
+            Self::Pointer(a) => {
+                if let Self::Pointer(b) = other {
+                    a.is_compatible(b)
                 } else {
                     false
                 }

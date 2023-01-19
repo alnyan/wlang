@@ -148,7 +148,9 @@ where
             }
         }
 
-        if let Ok(kw) = Keyword::from_str(&buf) {
+        if let Ok(op) = BasicOperator::from_str(&buf) {
+            Ok(Token::BasicOperator(op))
+        } else if let Ok(kw) = Keyword::from_str(&buf) {
             Ok(Token::Keyword(kw))
         } else {
             Ok(Token::Ident(buf))

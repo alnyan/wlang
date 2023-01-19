@@ -1,8 +1,9 @@
 use std::rc::Rc;
 
 use ast::{
+    node::TypeNode,
     token::{BasicOperator, Keyword, Punctuation},
-    Node, Token, node::TypeNode,
+    Node, Token,
 };
 
 use super::{
@@ -26,19 +27,27 @@ def_parser!(pub maybe_call<S>(input: &mut S, left: Rc<Node>) -> Rc<Node> {
 });
 
 def_parser!(pub parse_type<S>(input: &mut S) -> Rc<Node> {
-    if let Some(token) = input.peek()? && token == Token::Punctuation(Punctuation::LBracket) {
-        input.next()?.unwrap();
-        let element = parse_type(input)?;
+    if let Some(token) = input.peek()? {
+        if token == Token::Punctuation(Punctuation::LBracket) {
+            input.next()?.unwrap();
+            let element = parse_type(input)?;
 
-        expect!(input, Token::Punctuation(Punctuation::Semicolon), "Semicolon".to_owned());
-        expect!(input, Token::IntegerLiteral(value, extra), "IntegerLiteral".to_owned());
+            expect!(input, Token::Punctuation(Punctuation::Semicolon), "Semicolon".to_owned());
+            expect!(input, Token::IntegerLiteral(value, extra), "IntegerLiteral".to_owned());
 
-        if !extra.is_empty() {
-            todo!()
+            if !extra.is_empty() {
+                todo!()
+            }
+
+            expect!(input, Token::Punctuation(Punctuation::RBracket), "RBracket".to_owned());
+            return Ok(Rc::new(Node::Type(TypeNode::SizedArray(element, value as usize))));
+        } else if token == Token::BasicOperator(BasicOperator::Mul) {
+            input.next()?.unwrap();
+            // TODO *const/*mut
+            let inner = parse_type(input)?;
+
+            return Ok(Rc::new(Node::Type(TypeNode::Pointer(inner))));
         }
-
-        expect!(input, Token::Punctuation(Punctuation::RBracket), "RBracket".to_owned());
-        return Ok(Rc::new(Node::Type(TypeNode::SizedArray(element, value as usize))));
     }
 
     expect!(input, Token::Ident(name), "Identifier".to_owned());

@@ -14,7 +14,10 @@ use inkwell::{
     IntPredicate,
 };
 
-use crate::{CompilerOperation, LangType};
+use crate::{
+    tagged::{TaggedLvalueExpr, TaggedLvalueExprValue},
+    CompilerOperation, LangType,
+};
 
 use super::{
     pass1::Scope, CompilerError, FunctionImplementation, FunctionSignature, GlobalValue,
@@ -158,6 +161,9 @@ impl<'a> Codegen<'a> {
                     .map(Option::unwrap)
                     .map(|arg| match arg {
                         AnyValueEnum::IntValue(value) => BasicMetadataValueEnum::IntValue(value),
+                        AnyValueEnum::PointerValue(value) => {
+                            BasicMetadataValueEnum::PointerValue(value)
+                        }
                         _ => todo!(),
                     })
             })
@@ -201,107 +207,82 @@ impl<'a> Codegen<'a> {
                 Ok(None)
             }
             TaggedExprValue::Binary { op, lhs, rhs } => {
+                let llvm_lhs = self.compile_expr(llvm_func, loop_exit, lhs)?.unwrap();
                 let llvm_rhs = self.compile_expr(llvm_func, loop_exit, rhs)?.unwrap();
 
-                if *op == Token::BasicOperator(BasicOperator::Assign) {
-                    let TaggedExprValue::Ident(name) = &lhs.value else {
-                        todo!()
-                    };
+                let value = match expr.ty.as_ref() {
+                    LangType::IntType(ty) => {
+                        let llvm_lhs = llvm_lhs.into_int_value();
+                        let llvm_rhs = llvm_rhs.into_int_value();
+                        let (_, signed) = ty.as_llvm_int_type(self.module.get_context());
 
-                    let Some(lhs_ptr) = self.local_value(llvm_func, &scope, name) else {
-                        todo!()
-                    };
-
-                    match lhs_ptr {
-                        IdentValue::Variable(ptr) => {
-                            self.builder.build_store(
-                                ptr,
-                                match llvm_rhs {
-                                    AnyValueEnum::IntValue(i) => BasicValueEnum::IntValue(i),
-                                    _ => todo!(),
-                                },
-                            );
-
-                            Ok(None)
+                        if let Token::BasicOperator(op) = op {
+                            match op {
+                                BasicOperator::Add => {
+                                    self.builder.build_int_add(llvm_lhs, llvm_rhs, "add").into()
+                                }
+                                BasicOperator::Sub => {
+                                    self.builder.build_int_sub(llvm_lhs, llvm_rhs, "sub").into()
+                                }
+                                BasicOperator::Mul => {
+                                    self.builder.build_int_mul(llvm_lhs, llvm_rhs, "mul").into()
+                                }
+                                BasicOperator::Div => {
+                                    if signed {
+                                        self.builder.build_int_signed_div(llvm_lhs, llvm_rhs, "").into()
+                                    } else {
+                                        self.builder.build_int_unsigned_div(llvm_lhs, llvm_rhs, "").into()
+                                    }
+                                }
+                                BasicOperator::Mod => {
+                                    if signed {
+                                        self.builder.build_int_signed_rem(llvm_lhs, llvm_rhs, "").into()
+                                    } else {
+                                        self.builder.build_int_unsigned_rem(llvm_lhs, llvm_rhs, "").into()
+                                    }
+                                }
+                                BasicOperator::BitAnd => self.builder.build_and(llvm_lhs, llvm_rhs, "band").into(),
+                                BasicOperator::BitOr => self.builder.build_or(llvm_lhs, llvm_rhs, "bor").into(),
+                                BasicOperator::Shl => self.builder.build_left_shift(llvm_lhs, llvm_rhs, "shl").into(),
+                                BasicOperator::Shr => self.builder.build_right_shift(llvm_lhs, llvm_rhs, false, "shr").into(),
+                                _ => todo!(),
+                            }
+                        } else {
+                            todo!()
                         }
-                        _ => todo!(),
                     }
-                } else {
-                    let llvm_lhs = self.compile_expr(llvm_func, loop_exit, lhs)?.unwrap();
-
-                    let value = match expr.ty.as_ref() {
-                        LangType::IntType(ty) => {
+                    LangType::BoolType => {
+                        if let Token::BasicOperator(op) = op && op.is_comparison() {
+                            assert!(lhs.ty.is_compatible(&rhs.ty));
+                            match lhs.ty.as_ref() {
+                                LangType::IntType(ty) => {
+                                    let llvm_lhs = llvm_lhs.into_int_value();
+                                    let llvm_rhs = llvm_rhs.into_int_value();
+                                    let (_, signed) = ty.as_llvm_int_type(self.module.get_context());
+                                    self.builder.build_int_compare(op.as_int_comparison_predicate(signed), llvm_lhs, llvm_rhs, "cmp").into()
+                                }
+                                _ => todo!()
+                            }
+                        } else if let Token::BasicOperator(op) = op && op.is_logic() {
                             let llvm_lhs = llvm_lhs.into_int_value();
                             let llvm_rhs = llvm_rhs.into_int_value();
-                            let (_, signed) = ty.as_llvm_int_type(self.module.get_context());
+                            assert!(lhs.ty.is_compatible(&rhs.ty));
+                            assert!(lhs.ty.is_compatible(&self.pass1.pass0.bool_type()));
 
-                            if let Token::BasicOperator(op) = op {
-                                match op {
-                                    BasicOperator::Add => {
-                                        self.builder.build_int_add(llvm_lhs, llvm_rhs, "add").into()
-                                    }
-                                    BasicOperator::Sub => {
-                                        self.builder.build_int_sub(llvm_lhs, llvm_rhs, "sub").into()
-                                    }
-                                    BasicOperator::Mul => {
-                                        self.builder.build_int_mul(llvm_lhs, llvm_rhs, "mul").into()
-                                    }
-                                    BasicOperator::Div => {
-                                        if signed {
-                                            self.builder.build_int_signed_div(llvm_lhs, llvm_rhs, "").into()
-                                        } else {
-                                            self.builder.build_int_unsigned_div(llvm_lhs, llvm_rhs, "").into()
-                                        }
-                                    }
-                                    BasicOperator::Mod => {
-                                        if signed {
-                                            self.builder.build_int_signed_rem(llvm_lhs, llvm_rhs, "").into()
-                                        } else {
-                                            self.builder.build_int_unsigned_rem(llvm_lhs, llvm_rhs, "").into()
-                                        }
-                                    }
-                                    BasicOperator::BitAnd => self.builder.build_and(llvm_lhs, llvm_rhs, "band").into(),
-                                    BasicOperator::BitOr => self.builder.build_or(llvm_lhs, llvm_rhs, "bor").into(),
-                                    BasicOperator::Shl => self.builder.build_left_shift(llvm_lhs, llvm_rhs, "shl").into(),
-                                    BasicOperator::Shr => self.builder.build_right_shift(llvm_lhs, llvm_rhs, false, "shr").into(),
-                                    _ => todo!(),
-                                }
-                            } else {
-                                todo!()
+                            match op {
+                                BasicOperator::And => self.builder.build_and(llvm_lhs, llvm_rhs, "and").into(),
+                                BasicOperator::Or => self.builder.build_or(llvm_lhs, llvm_rhs, "or").into(),
+                                _ => todo!()
                             }
+                        } else {
+                            todo!()
                         }
-                        LangType::BoolType => {
-                            if let Token::BasicOperator(op) = op && op.is_comparison() {
-                                assert!(lhs.ty.is_compatible(&rhs.ty));
-                                match lhs.ty.as_ref() {
-                                    LangType::IntType(ty) => {
-                                        let llvm_lhs = llvm_lhs.into_int_value();
-                                        let llvm_rhs = llvm_rhs.into_int_value();
-                                        let (_, signed) = ty.as_llvm_int_type(self.module.get_context());
-                                        self.builder.build_int_compare(op.as_int_comparison_predicate(signed), llvm_lhs, llvm_rhs, "cmp").into()
-                                    }
-                                    _ => todo!()
-                                }
-                            } else if let Token::BasicOperator(op) = op && op.is_logic() {
-                                let llvm_lhs = llvm_lhs.into_int_value();
-                                let llvm_rhs = llvm_rhs.into_int_value();
-                                assert!(lhs.ty.is_compatible(&rhs.ty));
-                                assert!(lhs.ty.is_compatible(&self.pass1.pass0.bool_type()));
+                    }
+                    _ => todo!(),
+                };
 
-                                match op {
-                                    BasicOperator::And => self.builder.build_and(llvm_lhs, llvm_rhs, "and").into(),
-                                    BasicOperator::Or => self.builder.build_or(llvm_lhs, llvm_rhs, "or").into(),
-                                    _ => todo!()
-                                }
-                            } else {
-                                todo!()
-                            }
-                        }
-                        _ => todo!(),
-                    };
-
-                    Ok(Some(value))
-                }
+                Ok(Some(value))
+                // }
             }
             TaggedExprValue::LocalDefinition { ty, name, value } => {
                 let llvm_scope = self.llvm_scope(expr.fn_index, expr.scope_index.unwrap());
@@ -313,6 +294,15 @@ impl<'a> Codegen<'a> {
                         let value = self.compile_expr(llvm_func, loop_exit, value)?.unwrap();
 
                         self.builder.build_store(ptr, value.into_int_value());
+                        ptr
+                    }
+                    LangType::Pointer(_) => {
+                        let ty = ty.as_llvm_basic_type(self.module.get_context()).unwrap();
+                        let ptr = self.builder.build_alloca(ty, name);
+
+                        let value = self.compile_expr(llvm_func, loop_exit, value)?.unwrap();
+
+                        self.builder.build_store(ptr, value.into_pointer_value());
                         ptr
                     }
                     LangType::SizedArrayType(ty, size) => {
@@ -355,7 +345,8 @@ impl<'a> Codegen<'a> {
                                     .i64_type()
                                     .const_int(i as u64, false);
                                 let gep = unsafe {
-                                    self.builder.build_in_bounds_gep(ptr, &[zero_index, index], "")
+                                    self.builder
+                                        .build_in_bounds_gep(ptr, &[zero_index, index], "")
                                 };
 
                                 self.builder.build_store(gep, elem.into_int_value());
@@ -384,17 +375,10 @@ impl<'a> Codegen<'a> {
                 }
             }
             TaggedExprValue::Ident(name) => {
-                let ptr = if let Some(ptr) = self.local_value(llvm_func, &scope, name) {
-                    ptr
-                } else if let Some(gv) = self.globals.borrow().get(name) {
-                    IdentValue::Variable(gv.as_pointer_value())
-                } else {
-                    todo!()
-                };
-
+                let ptr = self.ident_ptr(llvm_func, &scope, name).unwrap();
                 Ok(Some(match ptr {
                     IdentValue::Variable(ptr) => match expr.ty.as_ref() {
-                        LangType::IntType(_) | LangType::BoolType => {
+                        LangType::IntType(_) | LangType::BoolType | LangType::Pointer(_) => {
                             self.builder.build_load(ptr, "").into()
                         }
                         LangType::SizedArrayType(_, _) => ptr.into(),
@@ -534,18 +518,98 @@ impl<'a> Codegen<'a> {
 
                 let zero_index = self.module.get_context().i64_type().const_zero();
 
-                let gep = unsafe {
-                    self.builder
-                        .build_gep(array, &[zero_index, index], "")
-                };
+                let gep = unsafe { self.builder.build_gep(array, &[zero_index, index], "") };
 
                 Ok(Some(match expr.ty.as_ref() {
                     LangType::IntType(_) | LangType::BoolType => {
                         self.builder.build_load(gep, "").into()
                     }
                     LangType::SizedArrayType(_, _) => todo!("Nested array indexing"),
+                    LangType::Pointer(_) => todo!("Pointer-typed array indexing"),
                     LangType::Void => todo!("Void-typed array indexing?"),
                 }))
+            }
+            TaggedExprValue::Dereference(value) => {
+                let value = self.compile_expr(llvm_func, loop_exit, value)?.unwrap();
+                if !value.is_pointer_value() {
+                    todo!();
+                }
+
+                let deref = self.builder.build_load(value.into_pointer_value(), "");
+                Ok(Some(deref.as_any_value_enum()))
+            }
+            TaggedExprValue::Reference(lvalue) => {
+                let lvalue = self.compile_lvalue(llvm_func, loop_exit, lvalue)?;
+                Ok(Some(lvalue.as_any_value_enum()))
+            }
+            TaggedExprValue::Cast(value, target_ty) => {
+                let value = self.compile_expr(llvm_func, loop_exit, value)?.unwrap();
+                if !value.is_int_value() {
+                    todo!();
+                }
+
+                let src_value = value.into_int_value();
+                let target_ty = target_ty
+                    .as_llvm_basic_type(self.module.get_context())
+                    .unwrap();
+                let cast =
+                    self.builder
+                        .build_int_to_ptr(src_value, target_ty.into_pointer_type(), "");
+                Ok(Some(cast.as_any_value_enum()))
+            }
+            TaggedExprValue::Assign(lhs, rhs) => {
+                let lhs = self.compile_lvalue(llvm_func, loop_exit, lhs)?;
+                let rhs = self.compile_expr(llvm_func, loop_exit, rhs)?.unwrap();
+
+                match rhs {
+                    AnyValueEnum::IntValue(iv) => self.builder.build_store(lhs, iv),
+                    _ => todo!(),
+                };
+
+                Ok(None)
+            }
+        }
+    }
+
+    fn compile_lvalue<'b>(
+        &'b self,
+        llvm_func: &LlvmFunctionScope<'a>,
+        loop_exit: Option<BasicBlock<'a>>,
+        lvalue: &'a Rc<TaggedLvalueExpr>,
+    ) -> Result<PointerValue<'b>, CompilerError> {
+        let scope = self.scope(lvalue.fn_index, lvalue.scope_index).unwrap();
+        match &lvalue.value {
+            TaggedLvalueExprValue::Ident(name) => {
+                let value = self.ident_ptr(llvm_func, &scope, name).unwrap();
+
+                if let IdentValue::Variable(ptr) = value {
+                    Ok(ptr)
+                } else {
+                    todo!()
+                }
+            }
+            TaggedLvalueExprValue::Dereference(value) => {
+                let value = self.compile_lvalue(llvm_func, loop_exit, value)?;
+                if !value.get_type().get_element_type().is_pointer_type() {
+                    todo!("LValue cannot be a non-reference type");
+                }
+
+                Ok(self.builder.build_load(value, "").into_pointer_value())
+            }
+            TaggedLvalueExprValue::ArrayElement(array, index) => {
+                let array = self.compile_lvalue(llvm_func, loop_exit, array)?;
+                let index = self.compile_expr(llvm_func, loop_exit, index)?.unwrap();
+                let zero_index = self.module.get_context().i64_type().const_zero();
+
+                if !array.get_type().get_element_type().is_array_type() {
+                    todo!("Tried to index into a non-array type");
+                }
+
+                let gep = unsafe {
+                    self.builder
+                        .build_gep(array, &[zero_index, index.into_int_value()], "")
+                };
+                Ok(gep)
             }
         }
     }
@@ -624,7 +688,7 @@ impl<'a> Codegen<'a> {
             .unwrap()
     }
 
-    fn local_value(
+    fn ident_ptr(
         &self,
         llvm_func: &LlvmFunctionScope<'a>,
         scope: &Rc<RefCell<dyn Scope>>,
@@ -649,6 +713,8 @@ impl<'a> Codegen<'a> {
 
                 param.map(IdentValue::Argument)
             }
+        } else if let Some(gv) = self.globals.borrow().get(name) {
+            Some(IdentValue::Variable(gv.as_pointer_value()))
         } else {
             None
         }

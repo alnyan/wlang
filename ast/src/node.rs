@@ -5,12 +5,15 @@ use crate::Token;
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeNode {
     Simple(String),
+    Pointer(Rc<Node>),
     SizedArray(Rc<Node>, usize),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Ident(String),
+    Reference(Rc<Node>),
+    Dereference(Rc<Node>),
     IntegerLiteral(u64, String),
     Binary(Token, Rc<Node>, Rc<Node>),
     Type(TypeNode),
