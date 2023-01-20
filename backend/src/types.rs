@@ -44,6 +44,9 @@ impl LangType {
                 BasicMetadataTypeEnum::IntType(t) => {
                     BasicMetadataTypeEnum::PointerType(t.ptr_type(Default::default()))
                 }
+                BasicMetadataTypeEnum::PointerType(t) => {
+                    BasicMetadataTypeEnum::PointerType(t.ptr_type(Default::default()))
+                }
                 _ => todo!(),
             },
             _ => todo!(),
@@ -83,6 +86,9 @@ impl LangType {
             Self::SizedArrayType(_, _) => todo!("Array"),
             Self::Pointer(inner) => match inner.as_llvm_basic_type(context) {
                 Some(BasicTypeEnum::IntType(t)) => {
+                    Some(t.ptr_type(Default::default()).as_basic_type_enum())
+                }
+                Some(BasicTypeEnum::PointerType(t)) => {
                     Some(t.ptr_type(Default::default()).as_basic_type_enum())
                 }
                 None => None,

@@ -127,6 +127,12 @@ where
                 break;
             }
 
+            // Special case: `*', mul or pointer derefence
+            // TODO somehow support both **x and `**' operator?
+            if buf == "*" {
+                break;
+            }
+
             // Special case: comment
             if buf == "//" {
                 break;
