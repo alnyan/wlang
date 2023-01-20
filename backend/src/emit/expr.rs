@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use inkwell::{
     basic_block::BasicBlock,
     types::IntType,
-    values::{AnyValue, AnyValueEnum, PointerValue, BasicValue},
+    values::{AnyValue, AnyValueEnum, BasicValue, PointerValue},
     IntPredicate,
 };
 
@@ -21,48 +21,46 @@ enum CastMethod {
     IntToLargerIntSignExtend,
 }
 
-const fn cast_method(src_ty: &LangType, dst_ty: &LangType) -> Option<CastMethod> {
-    match src_ty {
-        LangType::IntType(LangIntType::U64) if dst_ty.is_pointer() => Some(CastMethod::IntToPtr),
-        LangType::IntType(t0) => match dst_ty {
-            LangType::IntType(t1) => {
-                let i0 = *t0 as usize;
-                let i1 = *t1 as usize;
-                assert!(i0 < 8 && i1 < 8);
-
-                let v0 = i0 / 2;
-                let v1 = i1 / 2;
-                let s0 = i0 % 2;
-
-                if v0 == v1 {
-                    // Identity cast
-                    Some(CastMethod::Identity)
-                } else if v1 > v0 {
-                    // Cast to smaller
-                    Some(CastMethod::IntToSmallerInt)
-                } else if v0 > v1 {
-                    if s0 != 0 {
-                        // Cast to larger, preserve sign
-                        Some(CastMethod::IntToLargerIntSignExtend)
-                    } else {
-                        // Cast to larger, zero-extend
-                        Some(CastMethod::IntToLargerIntZeroExtend)
-                    }
-                } else {
-                    todo!()
-                }
-            }
-            _ => None,
-        },
-        LangType::Pointer(_) => match dst_ty {
-            LangType::IntType(LangIntType::U64) => Some(CastMethod::PtrToInt),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
 impl<'a> Codegen<'a> {
+    fn cast_method(&self, src_ty: &LangType, dst_ty: &LangType) -> Option<CastMethod> {
+        match src_ty {
+            LangType::IntType(LangIntType::USIZE) if dst_ty.is_pointer() => {
+                Some(CastMethod::IntToPtr)
+            }
+            LangType::IntType(t0) => match dst_ty {
+                LangType::IntType(t1) => {
+                    let w0 = t0.bit_width(&self.target_data);
+                    let w1 = t1.bit_width(&self.target_data);
+
+                    let s0 = t0.is_signed();
+
+                    if w0 == w1 {
+                        // Identity cast
+                        Some(CastMethod::Identity)
+                    } else if w1 > w0 {
+                        // Destination is larger
+                        if s0 {
+                            // Source is signed, sign-extend
+                            Some(CastMethod::IntToLargerIntSignExtend)
+                        } else {
+                            // Source is unsigned, zero-extend
+                            Some(CastMethod::IntToLargerIntZeroExtend)
+                        }
+                    } else {
+                        // Destination is smaller, truncate
+                        Some(CastMethod::IntToSmallerInt)
+                    }
+                }
+                _ => None,
+            },
+            LangType::Pointer(_) => match dst_ty {
+                LangType::IntType(LangIntType::USIZE) => Some(CastMethod::PtrToInt),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     fn compile_loop(
         &self,
         llvm_func: &LlvmFunctionScope<'a>,
@@ -260,7 +258,7 @@ impl<'a> Codegen<'a> {
 
         let ptr = match ty.as_ref() {
             LangType::IntType(ty) => {
-                let (ty, _) = ty.as_llvm_int_type(self.module.get_context());
+                let (ty, _) = ty.as_llvm_int_type(self.module.get_context(), &self.target_data);
                 let ptr = self.builder.build_alloca(ty, name);
                 let value = self.compile_expr(llvm_func, loop_exit, value)?.unwrap();
 
@@ -268,7 +266,9 @@ impl<'a> Codegen<'a> {
                 ptr
             }
             LangType::Pointer(_) => {
-                let ty = ty.as_llvm_basic_type(self.module.get_context()).unwrap();
+                let ty = ty
+                    .as_llvm_basic_type(self.module.get_context(), &self.target_data)
+                    .unwrap();
                 let ptr = self.builder.build_alloca(ty, name);
 
                 let value = self.compile_expr(llvm_func, loop_exit, value)?.unwrap();
@@ -281,7 +281,7 @@ impl<'a> Codegen<'a> {
                     todo!("Array elements can only be integer types (currently)");
                 };
 
-                let (ty, _) = ty.as_llvm_int_type(self.module.get_context());
+                let (ty, _) = ty.as_llvm_int_type(self.module.get_context(), &self.target_data);
                 let ptr = self
                     .builder
                     .build_alloca(ty.array_type((*size).try_into().unwrap()), name);
@@ -320,7 +320,7 @@ impl<'a> Codegen<'a> {
         let src_ty = &value.ty;
         let value = self.compile_expr(llvm_func, loop_exit, value)?.unwrap();
 
-        let Some(method) = cast_method(src_ty, target_ty) else {
+        let Some(method) = self.cast_method(src_ty, target_ty) else {
             todo!()
         };
 
@@ -335,7 +335,7 @@ impl<'a> Codegen<'a> {
                 .as_any_value_enum(),
             CastMethod::IntToPtr => {
                 let target_ty = target_ty
-                    .as_llvm_basic_type(self.module.get_context())
+                    .as_llvm_basic_type(self.module.get_context(), &self.target_data)
                     .unwrap()
                     .into_pointer_type();
                 self.builder
@@ -347,7 +347,8 @@ impl<'a> Codegen<'a> {
                 let LangType::IntType(target_ty) = target_ty.as_ref() else {
                     todo!()
                 };
-                let (target_ty, _) = target_ty.as_llvm_int_type(self.module.get_context());
+                let (target_ty, _) =
+                    target_ty.as_llvm_int_type(self.module.get_context(), &self.target_data);
                 self.builder
                     .build_int_cast(value.into_int_value(), target_ty, "")
                     .as_any_value_enum()
@@ -356,7 +357,8 @@ impl<'a> Codegen<'a> {
                 let LangType::IntType(target_ty) = target_ty.as_ref() else {
                     todo!()
                 };
-                let (target_ty, _) = target_ty.as_llvm_int_type(self.module.get_context());
+                let (target_ty, _) =
+                    target_ty.as_llvm_int_type(self.module.get_context(), &self.target_data);
 
                 self.builder
                     .build_int_z_extend(value.into_int_value(), target_ty, "")
@@ -366,7 +368,8 @@ impl<'a> Codegen<'a> {
                 let LangType::IntType(target_ty) = target_ty.as_ref() else {
                     todo!()
                 };
-                let (target_ty, _) = target_ty.as_llvm_int_type(self.module.get_context());
+                let (target_ty, _) =
+                    target_ty.as_llvm_int_type(self.module.get_context(), &self.target_data);
 
                 self.builder
                     .build_int_s_extend(value.into_int_value(), target_ty, "")
@@ -424,23 +427,22 @@ impl<'a> Codegen<'a> {
                 let then_value = then_value.unwrap();
                 let else_value = else_value.unwrap();
 
-                let ty = ty.as_llvm_basic_type(self.module.get_context()).unwrap();
+                let ty = ty
+                    .as_llvm_basic_type(self.module.get_context(), &self.target_data)
+                    .unwrap();
                 let phi = self.builder.build_phi(ty, "");
 
                 // TODO into_basic_value func?
                 let then_value = match then_value {
                     AnyValueEnum::IntValue(v) => v.as_basic_value_enum(),
-                    _ => todo!()
+                    _ => todo!(),
                 };
                 let else_value = match else_value {
                     AnyValueEnum::IntValue(v) => v.as_basic_value_enum(),
-                    _ => todo!()
+                    _ => todo!(),
                 };
 
-                phi.add_incoming(&[
-                    (&then_value, bb_true),
-                    (&else_value, bb_false)
-                ]);
+                phi.add_incoming(&[(&then_value, bb_true), (&else_value, bb_false)]);
 
                 Ok(Some(phi.as_any_value_enum()))
             } else {
@@ -494,7 +496,7 @@ impl<'a> Codegen<'a> {
             }
             TaggedExprValue::IntegerLiteral(value) => {
                 if let LangType::IntType(it) = expr.ty.as_ref() {
-                    let (ty, _) = it.as_llvm_int_type(self.module.get_context());
+                    let (ty, _) = it.as_llvm_int_type(self.module.get_context(), &self.target_data);
                     let value = ty.const_int(*value, false);
                     Ok(Some(value.into()))
                 } else {
@@ -558,7 +560,9 @@ impl<'a> Codegen<'a> {
                 condition,
                 if_true,
                 if_false,
-            } => self.compile_condition(llvm_func, loop_exit, &expr.ty, condition, if_true, if_false),
+            } => {
+                self.compile_condition(llvm_func, loop_exit, &expr.ty, condition, if_true, if_false)
+            }
             TaggedExprValue::Array(_elements) => {
                 todo!()
             }

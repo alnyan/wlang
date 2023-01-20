@@ -10,10 +10,12 @@ use inkwell::{
     context::Context,
     memory_buffer::MemoryBuffer,
     module::{Linkage, Module},
+    targets::{CodeModel, RelocMode, Target, TargetData, TargetTriple},
     values::{
         AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
         GlobalValue as LlvmGlobalValue, PointerValue,
     },
+    OptimizationLevel,
 };
 
 use crate::{
@@ -29,6 +31,7 @@ use super::{
 pub struct Codegen<'a> {
     module: Module<'a>,
     builder: Builder<'a>,
+    target_data: TargetData,
     pass1: &'a Pass1Program,
     scopes: RefCell<HashMap<(usize, usize), Rc<LlvmScope<'a>>>>,
     globals: RefCell<HashMap<String, LlvmGlobalValue<'a>>>,
@@ -50,13 +53,19 @@ pub enum IdentValue<'a> {
 }
 
 impl<'a> Codegen<'a> {
-    pub fn new(pass1: &'a Pass1Program, name: &str, context: &'a Context) -> Self {
+    pub fn new(
+        pass1: &'a Pass1Program,
+        name: &str,
+        context: &'a Context,
+        target_data: TargetData,
+    ) -> Self {
         let module = context.create_module(name);
         let builder = context.create_builder();
 
         Self {
             module,
             builder,
+            target_data,
             pass1,
             scopes: RefCell::new(HashMap::new()),
             globals: RefCell::new(HashMap::new()),
@@ -117,12 +126,14 @@ impl<'a> Codegen<'a> {
         let llvm_arg_types = func
             .arg_types
             .iter()
-            .map(|(_, ty)| ty.as_basic_metadata_type(self.module.get_context()))
+            .map(|(_, ty)| ty.as_basic_metadata_type(self.module.get_context(), &self.target_data))
             .collect::<Vec<_>>();
 
-        let llvm_func_ty = func
-            .return_type
-            .make_llvm_function_type(self.module.get_context(), &llvm_arg_types);
+        let llvm_func_ty = func.return_type.make_llvm_function_type(
+            self.module.get_context(),
+            &self.target_data,
+            &llvm_arg_types,
+        );
 
         Ok(self
             .module
@@ -211,7 +222,7 @@ impl<'a> Codegen<'a> {
     ) -> Result<(), CompilerError> {
         let llvm_ty = global
             .ty
-            .as_llvm_basic_type(self.module.get_context())
+            .as_llvm_basic_type(self.module.get_context(), &self.target_data)
             .unwrap();
 
         let ptr = self.module.add_global(llvm_ty, None, name);
@@ -222,7 +233,7 @@ impl<'a> Codegen<'a> {
                 let LangType::IntType(ty) = ty.as_ref() else {
                     todo!();
                 };
-                let (ty, _) = ty.as_llvm_int_type(self.module.get_context());
+                let (ty, _) = ty.as_llvm_int_type(self.module.get_context(), &self.target_data);
 
                 ptr.set_initializer(&ty.const_int(*value, false).as_basic_value_enum());
             }
@@ -343,8 +354,25 @@ pub fn compile_module<P: AsRef<Path>>(
     name: &str,
     dst_obj: P,
 ) -> Result<(), CompilerError> {
+    let opt_level = OptimizationLevel::None;
+    let reloc_mode = RelocMode::Default;
+    let code_model = CodeModel::Default;
+    Target::initialize_x86(&Default::default());
+    let target = Target::from_name("x86-64").unwrap();
+    let target_machine = target
+        .create_target_machine(
+            &TargetTriple::create("x86_64-pc-linux-gnu"),
+            "x86-64",
+            "+avx2",
+            opt_level,
+            reloc_mode,
+            code_model,
+        )
+        .unwrap();
+    let target_data = target_machine.get_target_data();
+
     let context = Context::create();
-    let mut cg = Codegen::new(&pass1, name, &context);
+    let mut cg = Codegen::new(&pass1, name, &context, target_data);
     cg.compile_module()?;
 
     match operation {

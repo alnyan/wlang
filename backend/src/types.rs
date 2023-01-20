@@ -2,13 +2,16 @@ use std::rc::Rc;
 
 use inkwell::{
     context::ContextRef,
+    targets::TargetData,
     types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, IntType},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(usize)]
 pub enum LangIntType {
-    U64 = 0,
+    USIZE = 0,
+    ISIZE,
+    U64,
     I64,
     U32,
     I32,
@@ -37,10 +40,14 @@ impl LangType {
         matches!(self, Self::Pointer(_))
     }
 
-    pub fn as_basic_metadata_type<'a>(&self, context: ContextRef<'a>) -> BasicMetadataTypeEnum<'a> {
+    pub fn as_basic_metadata_type<'a>(
+        &self,
+        context: ContextRef<'a>,
+        target_data: &TargetData,
+    ) -> BasicMetadataTypeEnum<'a> {
         match self {
-            Self::IntType(it) => it.as_llvm_basic_metadata_type(context),
-            Self::Pointer(t) => match t.as_basic_metadata_type(context) {
+            Self::IntType(it) => it.as_llvm_basic_metadata_type(context, target_data),
+            Self::Pointer(t) => match t.as_basic_metadata_type(context, target_data) {
                 BasicMetadataTypeEnum::IntType(t) => {
                     BasicMetadataTypeEnum::PointerType(t.ptr_type(Default::default()))
                 }
@@ -67,24 +74,29 @@ impl LangType {
     pub fn make_llvm_function_type<'a>(
         &'a self,
         context: ContextRef<'a>,
+        target_data: &TargetData,
         arg_types: &[BasicMetadataTypeEnum<'a>],
     ) -> FunctionType<'a> {
-        match self {
-            Self::IntType(it) => it.as_llvm_basic_type(context).fn_type(arg_types, false),
-            Self::Pointer(_) => self.as_llvm_basic_type(context).unwrap().fn_type(arg_types, false),
-            Self::BoolType => context.bool_type().fn_type(arg_types, false),
-            Self::Void => context.void_type().fn_type(arg_types, false),
-            Self::SizedArrayType(_, _) => todo!("Array as function return type"),
+        if matches!(self, Self::Void) {
+            context.void_type().fn_type(arg_types, false)
+        } else {
+            self.as_llvm_basic_type(context, target_data)
+                .unwrap()
+                .fn_type(arg_types, false)
         }
     }
 
-    pub fn as_llvm_basic_type<'a>(&self, context: ContextRef<'a>) -> Option<BasicTypeEnum<'a>> {
+    pub fn as_llvm_basic_type<'a>(
+        &self,
+        context: ContextRef<'a>,
+        target_data: &TargetData,
+    ) -> Option<BasicTypeEnum<'a>> {
         match self {
-            Self::IntType(it) => Some(it.as_llvm_basic_type(context)),
+            Self::IntType(it) => Some(it.as_llvm_basic_type(context, target_data)),
             Self::BoolType => Some(context.bool_type().into()),
             Self::Void => None,
             Self::SizedArrayType(_, _) => todo!("Array"),
-            Self::Pointer(inner) => match inner.as_llvm_basic_type(context) {
+            Self::Pointer(inner) => match inner.as_llvm_basic_type(context, target_data) {
                 Some(BasicTypeEnum::IntType(t)) => {
                     Some(t.ptr_type(Default::default()).as_basic_type_enum())
                 }
@@ -127,28 +139,55 @@ impl LangType {
 }
 
 impl LangIntType {
-    pub fn as_llvm_basic_type<'a>(&self, context: ContextRef<'a>) -> BasicTypeEnum<'a> {
+    pub fn is_signed(self) -> bool {
+        self as usize % 2 != 0
+    }
+
+    pub fn bit_width<'a>(self, target_data: &TargetData) -> usize {
         match self {
-            Self::U64 | Self::I64 => context.i64_type().into(),
-            Self::U32 | Self::I32 => context.i32_type().into(),
-            Self::U16 | Self::I16 => context.i16_type().into(),
-            Self::U8 | Self::I8 => context.i8_type().into(),
+            Self::U64 | Self::I64 => 64,
+            Self::U32 | Self::I32 => 32,
+            Self::U16 | Self::I16 => 16,
+            Self::U8 | Self::I8 => 8,
+            Self::USIZE | Self::ISIZE => target_data.get_pointer_byte_size(None) as usize * 8,
         }
+    }
+
+    pub fn as_llvm_basic_type<'a>(
+        &self,
+        context: ContextRef<'a>,
+        target_data: &TargetData,
+    ) -> BasicTypeEnum<'a> {
+        match self {
+            Self::U64 | Self::I64 => context.i64_type(),
+            Self::U32 | Self::I32 => context.i32_type(),
+            Self::U16 | Self::I16 => context.i16_type(),
+            Self::U8 | Self::I8 => context.i8_type(),
+            Self::USIZE | Self::ISIZE => context.ptr_sized_int_type(target_data, None),
+        }
+        .into()
     }
 
     pub fn as_llvm_basic_metadata_type<'a>(
         &self,
         context: ContextRef<'a>,
+        target_data: &TargetData,
     ) -> BasicMetadataTypeEnum<'a> {
         match self {
-            Self::U64 | Self::I64 => context.i64_type().into(),
-            Self::U32 | Self::I32 => context.i32_type().into(),
-            Self::U16 | Self::I16 => context.i16_type().into(),
-            Self::U8 | Self::I8 => context.i8_type().into(),
+            Self::U64 | Self::I64 => context.i64_type(),
+            Self::U32 | Self::I32 => context.i32_type(),
+            Self::U16 | Self::I16 => context.i16_type(),
+            Self::U8 | Self::I8 => context.i8_type(),
+            Self::USIZE | Self::ISIZE => context.ptr_sized_int_type(target_data, None),
         }
+        .into()
     }
 
-    pub fn as_llvm_int_type<'a>(&self, context: ContextRef<'a>) -> (IntType<'a>, bool) {
+    pub fn as_llvm_int_type<'a>(
+        &self,
+        context: ContextRef<'a>,
+        target_data: &TargetData,
+    ) -> (IntType<'a>, bool) {
         match self {
             Self::U64 => (context.i64_type(), false),
             Self::I64 => (context.i64_type(), true),
@@ -158,6 +197,8 @@ impl LangIntType {
             Self::I16 => (context.i16_type(), true),
             Self::U8 => (context.i8_type(), false),
             Self::I8 => (context.i8_type(), true),
+            Self::USIZE => (context.ptr_sized_int_type(target_data, None), false),
+            Self::ISIZE => (context.ptr_sized_int_type(target_data, None), true),
         }
     }
 }

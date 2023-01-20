@@ -1,6 +1,9 @@
 use std::rc::Rc;
 
-use ast::{token::{BasicOperator, TokenValue}, Token};
+use ast::{
+    token::{BasicOperator, TokenValue},
+    Token,
+};
 use inkwell::{
     basic_block::BasicBlock,
     values::{AnyValueEnum, IntValue},
@@ -85,7 +88,7 @@ impl<'a> Codegen<'a> {
             LangType::IntType(ty) => {
                 let llvm_lhs = llvm_lhs.into_int_value();
                 let llvm_rhs = llvm_rhs.into_int_value();
-                let (_, signed) = ty.as_llvm_int_type(self.module.get_context());
+                let (_, signed) = ty.as_llvm_int_type(self.module.get_context(), &self.target_data);
 
                 if let TokenValue::BasicOperator(op) = op.value {
                     self.compile_int_arithmetic(signed, op, llvm_lhs, llvm_rhs)?.into()
@@ -112,7 +115,7 @@ impl<'a> Codegen<'a> {
                         LangType::IntType(ty) => {
                             let llvm_lhs = llvm_lhs.into_int_value();
                             let llvm_rhs = llvm_rhs.into_int_value();
-                            let (_, signed) = ty.as_llvm_int_type(self.module.get_context());
+                            let (_, signed) = ty.as_llvm_int_type(self.module.get_context(), &self.target_data);
                             self.builder.build_int_compare(op.as_int_comparison_predicate(signed), llvm_lhs, llvm_rhs, "cmp").into()
                         }
                         _ => todo!()
