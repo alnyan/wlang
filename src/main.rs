@@ -1,8 +1,10 @@
+use std::process;
+
 use backend::CompilerOperation;
 use frontend::{
     input::StrInput,
     lexer::{Lexer, LexerInput},
-    parser::program::parse_program,
+    parser::{program::parse_program, ParserError},
 };
 
 use clap::Parser;
@@ -18,13 +20,42 @@ pub struct Args {
     src_file: String,
 }
 
+fn print_parser_error(err: ParserError) {
+    match err {
+        ParserError::LexerError(_e) => todo!(),
+        ParserError::UnexpectedToken(t, e) => {
+            eprintln!(
+                "{}:{}: unexpected token: {}",
+                t.position.line + 1,
+                t.position.column + 1,
+                t.value
+            );
+            if e.len() > 1 {
+                eprintln!("  Expected one of the following:");
+                for i in e {
+                    eprintln!("* {}", i);
+                }
+            } else {
+                eprintln!("  Expected {}", e[0]);
+            }
+        }
+        ParserError::UnexpectedEof => eprintln!("Unexpected EOF"),
+    }
+}
+
 fn main() {
     let args = Args::parse();
 
     let text = std::fs::read_to_string(&args.src_file).unwrap();
     let input = StrInput::new(&text);
     let mut lexer_input = LexerInput::new(Lexer::new(input));
-    let ast = parse_program(&mut lexer_input).unwrap();
+    let ast = match parse_program(&mut lexer_input) {
+        Ok(v) => v,
+        Err(e) => {
+            print_parser_error(e);
+            process::exit(1);
+        }
+    };
 
     // Setup context
     let pass0 = backend::pass0_program(&ast).unwrap();

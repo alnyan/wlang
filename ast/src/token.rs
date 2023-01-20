@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 
 pub trait FromChar: Sized {
     fn from_char(s: char) -> Option<Self>;
@@ -77,13 +77,13 @@ pub enum TokenValue {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SourcePosition {
     pub line: u64,
-    pub column: u64
+    pub column: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub position: SourcePosition,
-    pub value: TokenValue
+    pub value: TokenValue,
 }
 
 impl TokenValue {
@@ -103,7 +103,68 @@ impl TokenValue {
                 Punctuation::RBrace => "`}'",
                 Punctuation::RBracket => "`]'",
             },
-            _ => todo!()
+            TokenValue::Keyword(p) => match p {
+                Keyword::Fn => "`fn'",
+                Keyword::If => "`if'",
+                Keyword::Else => "`else'",
+                Keyword::Let => "`let'",
+                Keyword::Const => "`const'",
+                Keyword::Static => "`static'",
+                Keyword::Extern => "`extern'",
+                Keyword::Operator => "`operator'",
+                Keyword::While => "`while'",
+                Keyword::Loop => "`loop'",
+                Keyword::Return => "`return'",
+                Keyword::Break => "`break'",
+                Keyword::Continue => "`continue'",
+            },
+            TokenValue::BasicOperator(p) => match p {
+                BasicOperator::Add => "`+'",
+                BasicOperator::Sub => "`-'",
+                BasicOperator::Mul => "`*'",
+                BasicOperator::Div => "`/'",
+                BasicOperator::Mod => "`%'",
+                BasicOperator::Lt => "`<'",
+                BasicOperator::Gt => "`>'",
+                BasicOperator::Le => "`<='",
+                BasicOperator::Ge => "`>='",
+                BasicOperator::FatArrow => "`=>'",
+                BasicOperator::Arrow => "`->'",
+                BasicOperator::As => "`as'",
+                BasicOperator::Colon => "`:'",
+                BasicOperator::Assign => "`='",
+                BasicOperator::DoubleColon => "`::'",
+                BasicOperator::Dot => "`.'",
+                BasicOperator::Eq => "`=='",
+                BasicOperator::Ne => "`!='",
+                BasicOperator::Question => "`?'",
+                BasicOperator::Comment => "`//'",
+                BasicOperator::And => "`&&'",
+                BasicOperator::Or => "`||'",
+                BasicOperator::BitAnd => "`&'",
+                BasicOperator::BitOr => "`|'",
+                BasicOperator::Shl => "`<<'",
+                BasicOperator::Shr => "`<<'",
+            },
+            _ => todo!(),
+        }
+    }
+}
+
+impl Display for TokenValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenValue::Punctuation(_) => write!(f, "punctuation {}", self.to_str()),
+            TokenValue::BasicOperator(_) => write!(f, "{} operator", self.to_str()),
+            TokenValue::Keyword(_) => {
+                write!(f, "{} keyword", self.to_str())
+            }
+            TokenValue::IntegerLiteral(value, suffix) => {
+                write!(f, "integer literal `{}{}'", value, suffix)
+            }
+            TokenValue::Ident(name) => write!(f, "identifier `{}'", name),
+            TokenValue::CustomOperator(name) => write!(f, "`{}' operator", name),
+            TokenValue::StringLiteral(value) => write!(f, "string literal {:?}", value),
         }
     }
 }
