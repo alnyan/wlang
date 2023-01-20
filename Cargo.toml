@@ -9,8 +9,9 @@ edition = "2021"
 ast = { path = "ast" }
 frontend = { path = "frontend" }
 backend = { path = "backend" }
+macros = { path = "macros" }
 clap = { version = "4.1.1", features = ["derive"] }
 
 
 [workspace]
-members = ["ast", "frontend", "backend"]
+members = ["ast", "frontend", "backend", "macros"]

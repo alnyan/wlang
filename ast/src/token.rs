@@ -1,66 +1,110 @@
-use std::{fmt::Display, str::FromStr};
+use macros::ToFromEnum;
+use std::fmt::Display;
 
-pub trait FromChar: Sized {
-    fn from_char(s: char) -> Option<Self>;
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, ToFromEnum)]
 pub enum Punctuation {
+    #[to_from(';')]
     Semicolon,
+    #[to_from(',')]
     Comma,
+    #[to_from('(')]
     LParen,
+    #[to_from(')')]
     RParen,
+    #[to_from('{')]
     LBrace,
+    #[to_from('}')]
     RBrace,
+    #[to_from('[')]
     LBracket,
+    #[to_from(']')]
     RBracket,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, ToFromEnum)]
 pub enum Keyword {
+    #[to_from("static")]
     Static,
+    #[to_from("let")]
     Let,
+    #[to_from("const")]
     Const,
+    #[to_from("operator")]
     Operator,
+    #[to_from("extern")]
     Extern,
+    #[to_from("fn")]
     Fn,
+    #[to_from("if")]
     If,
+    #[to_from("else")]
     Else,
+    #[to_from("while")]
     While,
+    #[to_from("loop")]
     Loop,
+    #[to_from("break")]
     Break,
+    #[to_from("continue")]
     Continue,
+    #[to_from("return")]
     Return,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, ToFromEnum)]
 pub enum BasicOperator {
-    Assign,      // =
-    FatArrow,    // =>
-    Arrow,       // ->
-    Add,         // +
-    Sub,         // -
-    Mul,         // *
-    Div,         // /
-    Mod,         // %
-    Colon,       // :
+    #[to_from("=")]
+    Assign, // =
+    #[to_from("=>")]
+    FatArrow, // =>
+    #[to_from("->")]
+    Arrow, // ->
+    #[to_from("+")]
+    Add, // +
+    #[to_from("-")]
+    Sub, // -
+    #[to_from("*")]
+    Mul, // *
+    #[to_from("/")]
+    Div, // /
+    #[to_from("%")]
+    Mod, // %
+    #[to_from(":")]
+    Colon, // :
+    #[to_from("::")]
     DoubleColon, // ::
-    Dot,         // .
-    Question,    // ?
-    Lt,          // <
-    Gt,          // >
-    Le,          // <=
-    Ge,          // >=
-    Eq,          // ==
-    Ne,          // !=
-    Comment,     // //
-    And,         // &&
-    Or,          // ||
-    BitAnd,      // &
-    BitOr,       // |
-    Shl,         // <<
-    Shr,         // >>
-    As,          // as
+    #[to_from(".")]
+    Dot, // .
+    #[to_from("?")]
+    Question, // ?
+    #[to_from("<")]
+    Lt, // <
+    #[to_from(">")]
+    Gt, // >
+    #[to_from("<=")]
+    Le, // <=
+    #[to_from(">=")]
+    Ge, // >=
+    #[to_from("==")]
+    Eq, // ==
+    #[to_from("!=")]
+    Ne, // !=
+    #[to_from("//")]
+    Comment, // //
+    #[to_from("&&")]
+    And, // &&
+    #[to_from("||")]
+    Or, // ||
+    #[to_from("&")]
+    BitAnd, // &
+    #[to_from("|")]
+    BitOr, // |
+    #[to_from("<<")]
+    Shl, // <<
+    #[to_from(">>")]
+    Shr, // >>
+    #[to_from("as")]
+    As, // as
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -90,82 +134,40 @@ impl TokenValue {
     pub const fn is_operator(&self) -> bool {
         matches!(self, Self::BasicOperator(_) | Self::CustomOperator(_))
     }
+}
 
-    pub const fn to_str(&self) -> &'static str {
-        match self {
-            TokenValue::Punctuation(p) => match p {
-                Punctuation::Comma => "`,'",
-                Punctuation::Semicolon => "`;'",
-                Punctuation::LParen => "`('",
-                Punctuation::LBrace => "`{'",
-                Punctuation::LBracket => "`['",
-                Punctuation::RParen => "`)'",
-                Punctuation::RBrace => "`}'",
-                Punctuation::RBracket => "`]'",
-            },
-            TokenValue::Keyword(p) => match p {
-                Keyword::Fn => "`fn'",
-                Keyword::If => "`if'",
-                Keyword::Else => "`else'",
-                Keyword::Let => "`let'",
-                Keyword::Const => "`const'",
-                Keyword::Static => "`static'",
-                Keyword::Extern => "`extern'",
-                Keyword::Operator => "`operator'",
-                Keyword::While => "`while'",
-                Keyword::Loop => "`loop'",
-                Keyword::Return => "`return'",
-                Keyword::Break => "`break'",
-                Keyword::Continue => "`continue'",
-            },
-            TokenValue::BasicOperator(p) => match p {
-                BasicOperator::Add => "`+'",
-                BasicOperator::Sub => "`-'",
-                BasicOperator::Mul => "`*'",
-                BasicOperator::Div => "`/'",
-                BasicOperator::Mod => "`%'",
-                BasicOperator::Lt => "`<'",
-                BasicOperator::Gt => "`>'",
-                BasicOperator::Le => "`<='",
-                BasicOperator::Ge => "`>='",
-                BasicOperator::FatArrow => "`=>'",
-                BasicOperator::Arrow => "`->'",
-                BasicOperator::As => "`as'",
-                BasicOperator::Colon => "`:'",
-                BasicOperator::Assign => "`='",
-                BasicOperator::DoubleColon => "`::'",
-                BasicOperator::Dot => "`.'",
-                BasicOperator::Eq => "`=='",
-                BasicOperator::Ne => "`!='",
-                BasicOperator::Question => "`?'",
-                BasicOperator::Comment => "`//'",
-                BasicOperator::And => "`&&'",
-                BasicOperator::Or => "`||'",
-                BasicOperator::BitAnd => "`&'",
-                BasicOperator::BitOr => "`|'",
-                BasicOperator::Shl => "`<<'",
-                BasicOperator::Shr => "`<<'",
-            },
-            _ => todo!(),
+impl From<&TokenValue> for String {
+    fn from(value: &TokenValue) -> Self {
+        match value {
+            TokenValue::Punctuation(p) => {
+                format!("punctuation `{}'", <Punctuation as Into<char>>::into(*p))
+            }
+            TokenValue::Keyword(p) => {
+                format!("keyword `{}'", <Keyword as Into<&'static str>>::into(*p))
+            }
+            TokenValue::BasicOperator(p) => format!(
+                "operator `{}'",
+                <BasicOperator as Into<&'static str>>::into(*p)
+            ),
+            TokenValue::Ident(name) => format!("identifier `{name}'"),
+            TokenValue::CustomOperator(name) => format!("operator `{name}'"),
+            TokenValue::IntegerLiteral(value, suffix) => {
+                format!("integer literal `{value}{suffix}'")
+            }
+            TokenValue::StringLiteral(value) => format!("string literal {value:?}"),
         }
+    }
+}
+
+impl From<TokenValue> for String {
+    fn from(value: TokenValue) -> Self {
+        String::from(&value)
     }
 }
 
 impl Display for TokenValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TokenValue::Punctuation(_) => write!(f, "punctuation {}", self.to_str()),
-            TokenValue::BasicOperator(_) => write!(f, "{} operator", self.to_str()),
-            TokenValue::Keyword(_) => {
-                write!(f, "{} keyword", self.to_str())
-            }
-            TokenValue::IntegerLiteral(value, suffix) => {
-                write!(f, "integer literal `{}{}'", value, suffix)
-            }
-            TokenValue::Ident(name) => write!(f, "identifier `{}'", name),
-            TokenValue::CustomOperator(name) => write!(f, "`{}' operator", name),
-            TokenValue::StringLiteral(value) => write!(f, "string literal {:?}", value),
-        }
+        write!(f, "{}", String::from(self))
     }
 }
 
@@ -186,78 +188,5 @@ impl BasicOperator {
 
     pub const fn is_logic(&self) -> bool {
         matches!(self, Self::And | Self::Or)
-    }
-}
-
-impl FromChar for Punctuation {
-    fn from_char(s: char) -> Option<Self> {
-        match s {
-            ';' => Some(Punctuation::Semicolon),
-            ',' => Some(Punctuation::Comma),
-            '(' => Some(Punctuation::LParen),
-            ')' => Some(Punctuation::RParen),
-            '[' => Some(Punctuation::LBracket),
-            ']' => Some(Punctuation::RBracket),
-            '{' => Some(Punctuation::LBrace),
-            '}' => Some(Punctuation::RBrace),
-            _ => None,
-        }
-    }
-}
-
-impl FromStr for BasicOperator {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "=" => Ok(Self::Assign),
-            "=>" => Ok(Self::FatArrow),
-            "->" => Ok(Self::Arrow),
-            "+" => Ok(Self::Add),
-            "-" => Ok(Self::Sub),
-            "*" => Ok(Self::Mul),
-            "/" => Ok(Self::Div),
-            "%" => Ok(Self::Mod),
-            ":" => Ok(Self::Colon),
-            "::" => Ok(Self::DoubleColon),
-            "?" => Ok(Self::Question),
-            "." => Ok(Self::Dot),
-            ">" => Ok(Self::Gt),
-            "<" => Ok(Self::Lt),
-            ">=" => Ok(Self::Ge),
-            "<=" => Ok(Self::Le),
-            "==" => Ok(Self::Eq),
-            "!=" => Ok(Self::Ne),
-            "//" => Ok(Self::Comment),
-            "&&" => Ok(Self::And),
-            "||" => Ok(Self::Or),
-            "&" => Ok(Self::BitAnd),
-            "|" => Ok(Self::BitOr),
-            "<<" => Ok(Self::Shl),
-            ">>" => Ok(Self::Shr),
-            "as" => Ok(Self::As),
-            _ => Err(()),
-        }
-    }
-}
-
-impl FromStr for Keyword {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "operator" => Ok(Self::Operator),
-            "static" => Ok(Self::Static),
-            "fn" => Ok(Self::Fn),
-            "let" => Ok(Self::Let),
-            "const" => Ok(Self::Const),
-            "extern" => Ok(Self::Extern),
-            "return" => Ok(Self::Return),
-            "if" => Ok(Self::If),
-            "else" => Ok(Self::Else),
-            "while" => Ok(Self::While),
-            "break" => Ok(Self::Break),
-            _ => Err(()),
-        }
     }
 }

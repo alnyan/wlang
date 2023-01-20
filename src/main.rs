@@ -33,7 +33,7 @@ fn print_parser_error(err: ParserError) {
             if e.len() > 1 {
                 eprintln!("  Expected one of the following:");
                 for i in e {
-                    eprintln!("* {}", i);
+                    eprintln!("* {i}");
                 }
             } else {
                 eprintln!("  Expected {}", e[0]);

@@ -30,10 +30,10 @@ fn precedence(op: &TokenValue) -> u32 {
 
 def_parser!(pub parse_local_definition<S>(input: &mut S) -> Rc<Node> {
     // TODO maybe mut
-    expect!(input, TokenValue::Ident(name), vec!["variable name"]);
-    expect!(input, TokenValue::BasicOperator(BasicOperator::Colon), vec!["`:'"]);
+    expect_match!(input, TokenValue::Ident(name), vec!["variable name"]);
+    expect!(input, TokenValue::BasicOperator(BasicOperator::Colon));
     let ty = parse_type(input)?;
-    expect!(input, TokenValue::BasicOperator(BasicOperator::Assign), vec!["`='"]);
+    expect!(input, TokenValue::BasicOperator(BasicOperator::Assign));
     let value = parse_expr(input)?;
 
     Ok(Rc::new(Node::LocalDefinition {
@@ -96,7 +96,7 @@ def_parser!(pub parse_array<S>(input: &mut S) -> Rc<Node> {
     match token.value {
         TokenValue::Punctuation(Punctuation::Semicolon) => {
             let count = parse_expr(input)?;
-            expect!(input, TokenValue::Punctuation(Punctuation::RBracket), vec!["`]'"]);
+            expect!(input, TokenValue::Punctuation(Punctuation::RBracket));
 
             Ok(Rc::new(Node::ArrayRepeat(first, count)))
         },
@@ -113,7 +113,7 @@ def_parser!(pub parse_array<S>(input: &mut S) -> Rc<Node> {
         TokenValue::Punctuation(Punctuation::RBracket) => {
             Ok(Rc::new(Node::Array(vec![first])))
         }
-        _ => Err(ParserError::UnexpectedToken(token, vec!["`;'", "`,'", "`]'"]))
+        _ => Err(ParserError::unexpected_token(token, vec!["`;'", "`,'", "`]'"]))
     }
 });
 
@@ -150,11 +150,11 @@ def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
         TokenValue::Punctuation(Punctuation::LParen) => {
             // TODO tuples
             let inner = parse_expr(input)?;
-            expect!(input, TokenValue::Punctuation(Punctuation::RParen), vec!["`)'"]);
+            expect!(input, TokenValue::Punctuation(Punctuation::RParen));
             Ok(inner)
         }
         TokenValue::Punctuation(Punctuation::LBracket) => parse_array(input),
-        _ => Err(ParserError::UnexpectedToken(token, vec!["atom"]))
+        _ => Err(ParserError::unexpected_token(token, vec!["atom"]))
     }
 });
 
@@ -173,7 +173,7 @@ def_parser!(pub maybe_binary<S>(input: &mut S, this_left: Rc<Node>) -> Rc<Node> 
         maybe_lparen.value == TokenValue::Punctuation(Punctuation::LParen) {
         input.next()?.unwrap();
         let this_right = parse_expr(input)?;
-        expect!(input, TokenValue::Punctuation(Punctuation::RParen), vec!["`)'"]);
+        expect!(input, TokenValue::Punctuation(Punctuation::RParen));
         return Ok(Rc::new(Node::Binary(this_op, this_left, this_right)));
     }
 
@@ -202,7 +202,7 @@ def_parser!(pub maybe_array_element<S>(input: &mut S, expr: Rc<Node>) -> Rc<Node
         token.value == TokenValue::Punctuation(Punctuation::LBracket) {
         input.next()?.unwrap();
         let index = parse_expr(input)?;
-        expect!(input, TokenValue::Punctuation(Punctuation::RBracket), vec!["`]'"]);
+        expect!(input, TokenValue::Punctuation(Punctuation::RBracket));
         Ok(Rc::new(Node::ArrayElement(expr, index)))
     } else {
         Ok(expr)

@@ -1,7 +1,5 @@
-use std::str::FromStr;
-
 use ast::{
-    token::{BasicOperator, FromChar, Keyword, Punctuation, TokenValue},
+    token::{BasicOperator, Keyword, Punctuation, TokenValue},
     Token,
 };
 
@@ -137,7 +135,7 @@ where
 
         Ok(Token {
             position,
-            value: if let Ok(basic) = BasicOperator::from_str(&buf) {
+            value: if let Ok(basic) = BasicOperator::try_from(buf.as_str()) {
                 TokenValue::BasicOperator(basic)
             } else {
                 TokenValue::CustomOperator(buf)
@@ -190,9 +188,9 @@ where
 
         Ok(Token {
             position,
-            value: if let Ok(op) = BasicOperator::from_str(&buf) {
+            value: if let Ok(op) = BasicOperator::try_from(buf.as_str()) {
                 TokenValue::BasicOperator(op)
-            } else if let Ok(kw) = Keyword::from_str(&buf) {
+            } else if let Ok(kw) = Keyword::try_from(buf.as_str()) {
                 TokenValue::Keyword(kw)
             } else {
                 TokenValue::Ident(buf)
@@ -272,7 +270,7 @@ where
             } else if Self::PUNCTUATION.contains(&c) {
                 Ok(Token {
                     position,
-                    value: TokenValue::Punctuation(Punctuation::from_char(c).unwrap()),
+                    value: TokenValue::Punctuation(Punctuation::try_from(c).unwrap()),
                 })
             } else {
                 todo!()

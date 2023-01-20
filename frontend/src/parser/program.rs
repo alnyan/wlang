@@ -33,14 +33,14 @@ def_parser!(pub parse_type<S>(input: &mut S) -> Rc<Node> {
             input.next()?.unwrap();
             let element = parse_type(input)?;
 
-            expect!(input, TokenValue::Punctuation(Punctuation::Semicolon), vec!["`;'"]);
-            expect!(input, TokenValue::IntegerLiteral(value, extra), vec!["array size"]);
+            expect!(input, TokenValue::Punctuation(Punctuation::Semicolon));
+            expect_match!(input, TokenValue::IntegerLiteral(value, extra), vec!["array size"]);
 
             if !extra.is_empty() {
                 todo!()
             }
 
-            expect!(input, TokenValue::Punctuation(Punctuation::RBracket), vec!["`}'"]);
+            expect!(input, TokenValue::Punctuation(Punctuation::RBracket));
             return Ok(Rc::new(Node::Type(TypeNode::SizedArray(element, value as usize))));
         } else if token.value == TokenValue::BasicOperator(BasicOperator::Mul) {
             input.next()?.unwrap();
@@ -51,7 +51,7 @@ def_parser!(pub parse_type<S>(input: &mut S) -> Rc<Node> {
         }
     }
 
-    expect!(input, TokenValue::Ident(name), vec!["identifier"]);
+    expect_match!(input, TokenValue::Ident(name), vec!["identifier"]);
 
     if let Some(token) = input.peek()? &&
         token.value == TokenValue::BasicOperator(BasicOperator::Lt) {
@@ -62,15 +62,15 @@ def_parser!(pub parse_type<S>(input: &mut S) -> Rc<Node> {
 });
 
 def_parser!(pub parse_typed<S>(input: &mut S) -> (Rc<Node>, Rc<Node>) {
-    expect!(input, TokenValue::Ident(name), vec!["type name"]);
-    expect!(input, TokenValue::BasicOperator(BasicOperator::Colon), vec!["`:'"]);
+    expect_match!(input, TokenValue::Ident(name), vec!["type name"]);
+    expect!(input, TokenValue::BasicOperator(BasicOperator::Colon));
     let ty = parse_type(input)?;
 
     Ok((Rc::new(Node::Ident(name)), ty))
 });
 
 def_parser!(pub parse_block<S>(input: &mut S) -> Rc<Node> {
-    expect!(input, TokenValue::Punctuation(Punctuation::LBrace), vec!["`{'"]);
+    expect!(input, TokenValue::Punctuation(Punctuation::LBrace));
 
     let items = parse_many0(
         input,
@@ -81,8 +81,8 @@ def_parser!(pub parse_block<S>(input: &mut S) -> Rc<Node> {
 });
 
 def_parser!(pub parse_fn<S>(input: &mut S) -> Rc<Node> {
-    expect!(input, TokenValue::Ident(name), vec!["function name"]);
-    expect!(input, TokenValue::Punctuation(Punctuation::LParen), vec!["`('"]);
+    expect_match!(input, TokenValue::Ident(name), vec!["function name"]);
+    expect!(input, TokenValue::Punctuation(Punctuation::LParen));
     let args = parse_delimited(
         input,
         parse_typed,
@@ -108,12 +108,12 @@ def_parser!(pub parse_fn<S>(input: &mut S) -> Rc<Node> {
 });
 
 def_parser!(pub parse_global_definition<S>(input: &mut S, is_const: bool) -> Rc<Node> {
-    expect!(input, TokenValue::Ident(name), vec!["global name"]);
-    expect!(input, TokenValue::BasicOperator(BasicOperator::Colon), vec!["`:'"]);
+    expect_match!(input, TokenValue::Ident(name), vec!["global name"]);
+    expect!(input, TokenValue::BasicOperator(BasicOperator::Colon));
     let ty = parse_type(input)?;
-    expect!(input, TokenValue::BasicOperator(BasicOperator::Assign), vec!["`='"]);
+    expect!(input, TokenValue::BasicOperator(BasicOperator::Assign));
     let value = parse_expr(input)?;
-    expect!(input, TokenValue::Punctuation(Punctuation::Semicolon), vec!["`;'"]);
+    expect!(input, TokenValue::Punctuation(Punctuation::Semicolon));
 
     Ok(Rc::new(Node::GlobalDefinition {
         is_const,
@@ -124,9 +124,9 @@ def_parser!(pub parse_global_definition<S>(input: &mut S, is_const: bool) -> Rc<
 });
 
 def_parser!(pub parse_extern<S>(input: &mut S) -> Rc<Node> {
-    expect!(input, TokenValue::Keyword(Keyword::Fn), vec!["`fn' keyword"]);
-    expect!(input, TokenValue::Ident(name), vec!["function name"]);
-    expect!(input, TokenValue::Punctuation(Punctuation::LParen), vec!["`('"]);
+    expect!(input, TokenValue::Keyword(Keyword::Fn));
+    expect_match!(input, TokenValue::Ident(name), vec!["function name"]);
+    expect!(input, TokenValue::Punctuation(Punctuation::LParen));
     let arg_types = parse_delimited(
         input,
         parse_typed,
@@ -141,7 +141,7 @@ def_parser!(pub parse_extern<S>(input: &mut S) -> Rc<Node> {
         None
     };
 
-    expect!(input, TokenValue::Punctuation(Punctuation::Semicolon), vec!["`;'"]);
+    expect!(input, TokenValue::Punctuation(Punctuation::Semicolon));
 
     Ok(Rc::new(Node::ExternFunction {
         name,
@@ -160,7 +160,7 @@ def_parser!(pub parse_item<S>(input: &mut S) -> Rc<Node> {
         TokenValue::Keyword(Keyword::Extern) => parse_extern(input),
         TokenValue::Keyword(Keyword::Static) => parse_global_definition(input, false),
         TokenValue::Keyword(Keyword::Const) => parse_global_definition(input, true),
-        _ => Err(ParserError::UnexpectedToken(token, vec!["`fn'", "`static'", "`extern'", "`const'"]))
+        _ => Err(ParserError::unexpected_token(token, vec!["`fn'", "`static'", "`extern'", "`const'"]))
     }
 });
 

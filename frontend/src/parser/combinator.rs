@@ -26,7 +26,7 @@ def_parser!(
             if token.value == end {
                 break;
             } else if token.value != delim {
-                return Err(ParserError::UnexpectedToken(token, vec![delim.to_str(), end.to_str()]));
+                return Err(ParserError::unexpected_token(token, vec![delim, end]));
             }
         }
 
