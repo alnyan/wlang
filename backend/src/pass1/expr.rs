@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use ast::{node::TypeNode, token::BasicOperator, Node, Token};
+use ast::{node::TypeNode, token::{BasicOperator, TokenValue}, Node, Token};
 
 use crate::{CompilerError, LangType, LocalValue, TaggedExpr, TaggedExprValue};
 
@@ -125,7 +125,7 @@ pub fn pass1_binary(
     lhs: &Rc<Node>,
     rhs: &Rc<Node>,
 ) -> Result<Rc<TaggedExpr>, CompilerError> {
-    if let Token::BasicOperator(BasicOperator::As) = op {
+    if let TokenValue::BasicOperator(BasicOperator::As) = op.value {
         let lhs = pass1_expr(pass1, scope, lhs)?;
         let target_ty = pass1_type(pass1, rhs)?;
         Ok(Rc::new(TaggedExpr {
@@ -135,7 +135,7 @@ pub fn pass1_binary(
             ast_node: expr.clone(),
             value: TaggedExprValue::Cast(lhs, target_ty),
         }))
-    } else if let Token::BasicOperator(BasicOperator::Assign) = op {
+    } else if let TokenValue::BasicOperator(BasicOperator::Assign) = op.value {
         let lhs = pass1_lvalue(pass1, scope, lhs)?;
         let rhs = pass1_expr(pass1, scope, rhs)?;
 
@@ -150,8 +150,8 @@ pub fn pass1_binary(
         let lhs = pass1_expr(pass1, scope, lhs)?;
         let rhs = pass1_expr(pass1, scope, rhs)?;
 
-        let ty = match op {
-            Token::BasicOperator(op) => pass1_basic_binary(pass1, scope, *op, &lhs.ty, &rhs.ty)?,
+        let ty = match op.value {
+            TokenValue::BasicOperator(op) => pass1_basic_binary(pass1, scope, op, &lhs.ty, &rhs.ty)?,
             _ => panic!("{expr:?}"),
         };
 

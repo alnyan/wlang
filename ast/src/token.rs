@@ -64,7 +64,7 @@ pub enum BasicOperator {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Token {
+pub enum TokenValue {
     BasicOperator(BasicOperator),
     CustomOperator(String),
     Punctuation(Punctuation),
@@ -74,9 +74,37 @@ pub enum Token {
     StringLiteral(String),
 }
 
-impl Token {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SourcePosition {
+    pub line: u64,
+    pub column: u64
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Token {
+    pub position: SourcePosition,
+    pub value: TokenValue
+}
+
+impl TokenValue {
     pub const fn is_operator(&self) -> bool {
         matches!(self, Self::BasicOperator(_) | Self::CustomOperator(_))
+    }
+
+    pub const fn to_str(&self) -> &'static str {
+        match self {
+            TokenValue::Punctuation(p) => match p {
+                Punctuation::Comma => "`,'",
+                Punctuation::Semicolon => "`;'",
+                Punctuation::LParen => "`('",
+                Punctuation::LBrace => "`{'",
+                Punctuation::LBracket => "`['",
+                Punctuation::RParen => "`)'",
+                Punctuation::RBrace => "`}'",
+                Punctuation::RBracket => "`]'",
+            },
+            _ => todo!()
+        }
     }
 }
 

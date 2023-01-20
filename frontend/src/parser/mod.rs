@@ -5,7 +5,8 @@ use crate::lexer::LexerError;
 #[derive(Debug, Clone)]
 pub enum ParserError {
     UnexpectedEof,
-    UnexpectedToken(Token, String),
+    UnexpectedToken(Token, Vec<&'static str>),
+    LexerError(LexerError)
 }
 
 macro_rules! expect {
@@ -14,7 +15,7 @@ macro_rules! expect {
                             return Err($crate::parser::ParserError::UnexpectedEof);
                         };
 
-        let $pattern = _token else {
+        let $pattern = _token.value else {
                             return Err($crate::parser::ParserError::UnexpectedToken(_token, $msg));
                         };
     };
@@ -39,8 +40,8 @@ impl From<()> for ParserError {
 }
 
 impl From<LexerError> for ParserError {
-    fn from(_: LexerError) -> Self {
-        todo!()
+    fn from(e: LexerError) -> Self {
+        Self::LexerError(e)
     }
 }
 

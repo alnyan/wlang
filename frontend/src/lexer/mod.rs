@@ -1,22 +1,22 @@
 use std::str::FromStr;
 
 use ast::{
-    token::{BasicOperator, FromChar, Keyword, Punctuation},
+    token::{BasicOperator, FromChar, Keyword, Punctuation, TokenValue},
     Token,
 };
 
-use crate::input::Input;
+use crate::input::{Input, InputPosition};
 
-pub struct Lexer<S: Input<char>> {
+pub struct Lexer<S: Input<char> + InputPosition> {
     input: S,
 }
 
-pub struct LexerInput<S: Input<char>> {
+pub struct LexerInput<S: Input<char> + InputPosition> {
     lexer: Lexer<S>,
     current: Option<Token>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum LexerError {
     Input(String),
     UnknownEscapeCharacter(char),
@@ -31,7 +31,7 @@ pub enum EscapedCharacter {
 pub enum StringElement {
     Character(char),
     EscapedCharacter(EscapedCharacter),
-    Terminator
+    Terminator,
 }
 
 impl TryFrom<char> for EscapedCharacter {
@@ -40,7 +40,7 @@ impl TryFrom<char> for EscapedCharacter {
     fn try_from(value: char) -> Result<Self, Self::Error> {
         match value {
             'n' => Ok(EscapedCharacter::Newline),
-            _ => Err(LexerError::UnknownEscapeCharacter(value))
+            _ => Err(LexerError::UnknownEscapeCharacter(value)),
         }
     }
 }
@@ -53,7 +53,7 @@ impl From<EscapedCharacter> for char {
     }
 }
 
-impl<S: Input<char>> Lexer<S>
+impl<S: Input<char> + InputPosition> Lexer<S>
 where
     LexerError: From<S::Error>,
 {
@@ -86,6 +86,7 @@ where
     }
 
     fn lex_number(&mut self) -> Result<Token, LexerError> {
+        let position = self.input.pos();
         let mut value = 0;
         let mut extra = String::new();
 
@@ -106,10 +107,14 @@ where
             }
         }
 
-        Ok(Token::IntegerLiteral(value, extra))
+        Ok(Token {
+            position,
+            value: TokenValue::IntegerLiteral(value, extra),
+        })
     }
 
     fn lex_operator(&mut self) -> Result<Token, LexerError> {
+        let position = self.input.pos();
         let mut buf = String::new();
 
         loop {
@@ -130,11 +135,14 @@ where
             }
         }
 
-        if let Ok(basic) = BasicOperator::from_str(&buf) {
-            Ok(Token::BasicOperator(basic))
-        } else {
-            Ok(Token::CustomOperator(buf))
-        }
+        Ok(Token {
+            position,
+            value: if let Ok(basic) = BasicOperator::from_str(&buf) {
+                TokenValue::BasicOperator(basic)
+            } else {
+                TokenValue::CustomOperator(buf)
+            },
+        })
     }
 
     fn skip_whitespace(&mut self) -> Result<(), LexerError> {
@@ -164,6 +172,7 @@ where
     }
 
     fn lex_keyword_or_ident(&mut self) -> Result<Token, LexerError> {
+        let position = self.input.pos();
         let mut buf = String::new();
 
         loop {
@@ -179,13 +188,16 @@ where
             }
         }
 
-        if let Ok(op) = BasicOperator::from_str(&buf) {
-            Ok(Token::BasicOperator(op))
-        } else if let Ok(kw) = Keyword::from_str(&buf) {
-            Ok(Token::Keyword(kw))
-        } else {
-            Ok(Token::Ident(buf))
-        }
+        Ok(Token {
+            position,
+            value: if let Ok(op) = BasicOperator::from_str(&buf) {
+                TokenValue::BasicOperator(op)
+            } else if let Ok(kw) = Keyword::from_str(&buf) {
+                TokenValue::Keyword(kw)
+            } else {
+                TokenValue::Ident(buf)
+            },
+        })
     }
 
     fn lex_string_element(&mut self) -> Result<StringElement, LexerError> {
@@ -200,13 +212,14 @@ where
                 };
 
                 EscapedCharacter::try_from(c).map(StringElement::EscapedCharacter)
-            },
+            }
             '"' => Ok(StringElement::Terminator),
-            _ => Ok(StringElement::Character(c))
+            _ => Ok(StringElement::Character(c)),
         }
     }
 
     fn lex_string_literal(&mut self) -> Result<Token, LexerError> {
+        let position = self.input.pos();
         let mut buf = String::new();
 
         loop {
@@ -219,7 +232,10 @@ where
             }
         }
 
-        Ok(Token::StringLiteral(buf))
+        Ok(Token {
+            position,
+            value: TokenValue::StringLiteral(buf),
+        })
     }
 
     pub fn lex_token(&mut self) -> Result<Option<Token>, LexerError> {
@@ -233,7 +249,7 @@ where
             if Self::OPERATOR.contains(&c) {
                 let res = self.lex_operator()?;
 
-                if res == Token::BasicOperator(BasicOperator::Comment) {
+                if res.value == TokenValue::BasicOperator(BasicOperator::Comment) {
                     self.skip_comment()?;
                 } else {
                     return Ok(Some(res));
@@ -248,12 +264,16 @@ where
         } else if c.is_alphabetic() || c == '_' {
             self.lex_keyword_or_ident()
         } else {
+            let position = self.input.pos();
             self.input.next().unwrap();
 
             if c == '"' {
                 self.lex_string_literal()
             } else if Self::PUNCTUATION.contains(&c) {
-                Ok(Token::Punctuation(Punctuation::from_char(c).unwrap()))
+                Ok(Token {
+                    position,
+                    value: TokenValue::Punctuation(Punctuation::from_char(c).unwrap()),
+                })
             } else {
                 todo!()
             }
@@ -272,7 +292,7 @@ where
     }
 }
 
-impl<S: Input<char>> LexerInput<S> {
+impl<S: Input<char> + InputPosition> LexerInput<S> {
     pub fn new(lexer: Lexer<S>) -> Self {
         Self {
             lexer,
@@ -281,7 +301,7 @@ impl<S: Input<char>> LexerInput<S> {
     }
 }
 
-impl<S: Input<char>> Input<Token> for LexerInput<S>
+impl<S: Input<char> + InputPosition> Input<Token> for LexerInput<S>
 where
     LexerError: From<<S as Input<char>>::Error>,
 {

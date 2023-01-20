@@ -1,10 +1,10 @@
-use ast::Token;
+use ast::token::TokenValue;
 
 use super::ParserError;
 
 def_parser!(
     pub parse_delimited<S, T, P1: Fn(&mut S) -> Result<T, ParserError>>
-        (input: &mut S, p: P1, end: Token, delim: Token) -> Vec<T> {
+        (input: &mut S, p: P1, end: TokenValue, delim: TokenValue) -> Vec<T> {
         let mut res = vec![];
 
         loop {
@@ -12,7 +12,7 @@ def_parser!(
                 return Err(ParserError::UnexpectedEof);
             };
 
-            if token == end {
+            if token.value == end {
                 input.next()?.unwrap();
                 break;
             } else {
@@ -23,10 +23,10 @@ def_parser!(
                 return Err(ParserError::UnexpectedEof)
             };
 
-            if token == end {
+            if token.value == end {
                 break;
-            } else if token != delim {
-                return Err(ParserError::UnexpectedToken(token, format!("{delim:?}")));
+            } else if token.value != delim {
+                return Err(ParserError::UnexpectedToken(token, vec![delim.to_str(), end.to_str()]));
             }
         }
 
@@ -36,7 +36,7 @@ def_parser!(
 
 def_parser!(
     pub parse_many0<S, T, P1: Fn(&mut S) -> Result<T, ParserError>>
-        (input: &mut S, p: P1, end: Token) -> Vec<T> {
+        (input: &mut S, p: P1, end: TokenValue) -> Vec<T> {
         let mut res = vec![];
 
         loop {
@@ -44,7 +44,7 @@ def_parser!(
                 return Err(ParserError::UnexpectedEof);
             };
 
-            if token == end {
+            if token.value == end {
                 input.next()?.unwrap();
                 break;
             } else {

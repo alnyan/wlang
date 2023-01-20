@@ -2,8 +2,8 @@ use std::rc::Rc;
 
 use ast::{
     node::TypeNode,
-    token::{BasicOperator, Keyword, Punctuation},
-    Node, Token,
+    token::{BasicOperator, Keyword, Punctuation, TokenValue},
+    Node,
 };
 
 use super::{
@@ -13,13 +13,14 @@ use super::{
 };
 
 def_parser!(pub maybe_call<S>(input: &mut S, left: Rc<Node>) -> Rc<Node> {
-    if let Some(token) = input.peek()? && token == Token::Punctuation(Punctuation::LParen) {
+    if let Some(token) = input.peek()? &&
+        token.value == TokenValue::Punctuation(Punctuation::LParen) {
         input.next()?.unwrap();
         let args = parse_delimited(
             input,
             parse_expr,
-            Token::Punctuation(Punctuation::RParen),
-            Token::Punctuation(Punctuation::Comma))?;
+            TokenValue::Punctuation(Punctuation::RParen),
+            TokenValue::Punctuation(Punctuation::Comma))?;
         Ok(Rc::new(Node::Call(left, args)))
     } else {
         Ok(left)
@@ -28,20 +29,20 @@ def_parser!(pub maybe_call<S>(input: &mut S, left: Rc<Node>) -> Rc<Node> {
 
 def_parser!(pub parse_type<S>(input: &mut S) -> Rc<Node> {
     if let Some(token) = input.peek()? {
-        if token == Token::Punctuation(Punctuation::LBracket) {
+        if token.value == TokenValue::Punctuation(Punctuation::LBracket) {
             input.next()?.unwrap();
             let element = parse_type(input)?;
 
-            expect!(input, Token::Punctuation(Punctuation::Semicolon), "Semicolon".to_owned());
-            expect!(input, Token::IntegerLiteral(value, extra), "IntegerLiteral".to_owned());
+            expect!(input, TokenValue::Punctuation(Punctuation::Semicolon), vec!["`;'"]);
+            expect!(input, TokenValue::IntegerLiteral(value, extra), vec!["array size"]);
 
             if !extra.is_empty() {
                 todo!()
             }
 
-            expect!(input, Token::Punctuation(Punctuation::RBracket), "RBracket".to_owned());
+            expect!(input, TokenValue::Punctuation(Punctuation::RBracket), vec!["`}'"]);
             return Ok(Rc::new(Node::Type(TypeNode::SizedArray(element, value as usize))));
-        } else if token == Token::BasicOperator(BasicOperator::Mul) {
+        } else if token.value == TokenValue::BasicOperator(BasicOperator::Mul) {
             input.next()?.unwrap();
             // TODO *const/*mut
             let inner = parse_type(input)?;
@@ -50,9 +51,10 @@ def_parser!(pub parse_type<S>(input: &mut S) -> Rc<Node> {
         }
     }
 
-    expect!(input, Token::Ident(name), "Identifier".to_owned());
+    expect!(input, TokenValue::Ident(name), vec!["identifier"]);
 
-    if let Some(token) = input.peek()? && token == Token::BasicOperator(BasicOperator::Lt) {
+    if let Some(token) = input.peek()? &&
+        token.value == TokenValue::BasicOperator(BasicOperator::Lt) {
         todo!()
     } else {
         Ok(Rc::new(Node::Type(TypeNode::Simple(name))))
@@ -60,34 +62,35 @@ def_parser!(pub parse_type<S>(input: &mut S) -> Rc<Node> {
 });
 
 def_parser!(pub parse_typed<S>(input: &mut S) -> (Rc<Node>, Rc<Node>) {
-    expect!(input, Token::Ident(name), "Identifier".to_owned());
-    expect!(input, Token::BasicOperator(BasicOperator::Colon), "Colon".to_owned());
+    expect!(input, TokenValue::Ident(name), vec!["type name"]);
+    expect!(input, TokenValue::BasicOperator(BasicOperator::Colon), vec!["`:'"]);
     let ty = parse_type(input)?;
 
     Ok((Rc::new(Node::Ident(name)), ty))
 });
 
 def_parser!(pub parse_block<S>(input: &mut S) -> Rc<Node> {
-    expect!(input, Token::Punctuation(Punctuation::LBrace), "LBrace".to_owned());
+    expect!(input, TokenValue::Punctuation(Punctuation::LBrace), vec!["`{'"]);
 
     let items = parse_many0(
         input,
         parse_statement_expr,
-        Token::Punctuation(Punctuation::RBrace))?;
+        TokenValue::Punctuation(Punctuation::RBrace))?;
 
     Ok(Rc::new(Node::Block(items)))
 });
 
 def_parser!(pub parse_fn<S>(input: &mut S) -> Rc<Node> {
-    expect!(input, Token::Ident(name), "Identifier".to_owned());
-    expect!(input, Token::Punctuation(Punctuation::LParen), "LParen".to_owned());
+    expect!(input, TokenValue::Ident(name), vec!["function name"]);
+    expect!(input, TokenValue::Punctuation(Punctuation::LParen), vec!["`('"]);
     let args = parse_delimited(
         input,
         parse_typed,
-        Token::Punctuation(Punctuation::RParen),
-        Token::Punctuation(Punctuation::Comma))?;
+        TokenValue::Punctuation(Punctuation::RParen),
+        TokenValue::Punctuation(Punctuation::Comma))?;
 
-    let ret_type = if let Some(token) = input.peek()? && token == Token::BasicOperator(BasicOperator::Arrow) {
+    let ret_type = if let Some(token) = input.peek()? &&
+        token.value == TokenValue::BasicOperator(BasicOperator::Arrow) {
         input.next()?.unwrap();
         Some(parse_type(input)?)
     } else {
@@ -105,12 +108,12 @@ def_parser!(pub parse_fn<S>(input: &mut S) -> Rc<Node> {
 });
 
 def_parser!(pub parse_global_definition<S>(input: &mut S, is_const: bool) -> Rc<Node> {
-    expect!(input, Token::Ident(name), "Identifier".to_owned());
-    expect!(input, Token::BasicOperator(BasicOperator::Colon), "Colon".to_owned());
+    expect!(input, TokenValue::Ident(name), vec!["global name"]);
+    expect!(input, TokenValue::BasicOperator(BasicOperator::Colon), vec!["`:'"]);
     let ty = parse_type(input)?;
-    expect!(input, Token::BasicOperator(BasicOperator::Assign), "Assign".to_owned());
+    expect!(input, TokenValue::BasicOperator(BasicOperator::Assign), vec!["`='"]);
     let value = parse_expr(input)?;
-    expect!(input, Token::Punctuation(Punctuation::Semicolon), "Semicolon".to_owned());
+    expect!(input, TokenValue::Punctuation(Punctuation::Semicolon), vec!["`;'"]);
 
     Ok(Rc::new(Node::GlobalDefinition {
         is_const,
@@ -121,23 +124,24 @@ def_parser!(pub parse_global_definition<S>(input: &mut S, is_const: bool) -> Rc<
 });
 
 def_parser!(pub parse_extern<S>(input: &mut S) -> Rc<Node> {
-    expect!(input, Token::Keyword(Keyword::Fn), "Fn".to_owned());
-    expect!(input, Token::Ident(name), "Identifier".to_owned());
-    expect!(input, Token::Punctuation(Punctuation::LParen), "LParen".to_owned());
+    expect!(input, TokenValue::Keyword(Keyword::Fn), vec!["`fn' keyword"]);
+    expect!(input, TokenValue::Ident(name), vec!["function name"]);
+    expect!(input, TokenValue::Punctuation(Punctuation::LParen), vec!["`('"]);
     let arg_types = parse_delimited(
         input,
         parse_typed,
-        Token::Punctuation(Punctuation::RParen),
-        Token::Punctuation(Punctuation::Comma))?;
+        TokenValue::Punctuation(Punctuation::RParen),
+        TokenValue::Punctuation(Punctuation::Comma))?;
 
-    let ret_type = if let Some(token) = input.peek()? && token == Token::BasicOperator(BasicOperator::Arrow) {
+    let ret_type = if let Some(token) = input.peek()? &&
+        token.value == TokenValue::BasicOperator(BasicOperator::Arrow) {
         input.next()?.unwrap();
         Some(parse_type(input)?)
     } else {
         None
     };
 
-    expect!(input, Token::Punctuation(Punctuation::Semicolon), "Semicolon".to_owned());
+    expect!(input, TokenValue::Punctuation(Punctuation::Semicolon), vec!["`;'"]);
 
     Ok(Rc::new(Node::ExternFunction {
         name,
@@ -151,12 +155,12 @@ def_parser!(pub parse_item<S>(input: &mut S) -> Rc<Node> {
         return Err(ParserError::UnexpectedEof);
     };
 
-    match token {
-        Token::Keyword(Keyword::Fn) => parse_fn(input),
-        Token::Keyword(Keyword::Extern) => parse_extern(input),
-        Token::Keyword(Keyword::Static) => parse_global_definition(input, false),
-        Token::Keyword(Keyword::Const) => parse_global_definition(input, true),
-        _ => Err(ParserError::UnexpectedToken(token, "Item: fn/static/const".to_owned()))
+    match token.value {
+        TokenValue::Keyword(Keyword::Fn) => parse_fn(input),
+        TokenValue::Keyword(Keyword::Extern) => parse_extern(input),
+        TokenValue::Keyword(Keyword::Static) => parse_global_definition(input, false),
+        TokenValue::Keyword(Keyword::Const) => parse_global_definition(input, true),
+        _ => Err(ParserError::UnexpectedToken(token, vec!["`fn'", "`static'", "`extern'", "`const'"]))
     }
 });
 

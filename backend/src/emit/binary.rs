@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use ast::{token::BasicOperator, Token};
+use ast::{token::{BasicOperator, TokenValue}, Token};
 use inkwell::{
     basic_block::BasicBlock,
     values::{AnyValueEnum, IntValue},
@@ -87,14 +87,14 @@ impl<'a> Codegen<'a> {
                 let llvm_rhs = llvm_rhs.into_int_value();
                 let (_, signed) = ty.as_llvm_int_type(self.module.get_context());
 
-                if let Token::BasicOperator(op) = op {
-                    self.compile_int_arithmetic(signed, *op, llvm_lhs, llvm_rhs)?.into()
+                if let TokenValue::BasicOperator(op) = op.value {
+                    self.compile_int_arithmetic(signed, op, llvm_lhs, llvm_rhs)?.into()
                 } else {
                     todo!()
                 }
             }
             LangType::Pointer(_) => {
-                if &Token::BasicOperator(BasicOperator::Add) == op {
+                if TokenValue::BasicOperator(BasicOperator::Add) == op.value {
                     // TODO better pointer arithmetic through GEP
                     let llvm_lhs = llvm_lhs.into_pointer_value();
                     let llvm_rhs = llvm_rhs.into_int_value();
@@ -106,7 +106,7 @@ impl<'a> Codegen<'a> {
                 }
             }
             LangType::BoolType => {
-                if let Token::BasicOperator(op) = op && op.is_comparison() {
+                if let TokenValue::BasicOperator(op) = op.value && op.is_comparison() {
                     assert!(lhs.ty.is_compatible(&rhs.ty));
                     match lhs.ty.as_ref() {
                         LangType::IntType(ty) => {
@@ -117,7 +117,7 @@ impl<'a> Codegen<'a> {
                         }
                         _ => todo!()
                     }
-                } else if let Token::BasicOperator(op) = op && op.is_logic() {
+                } else if let TokenValue::BasicOperator(op) = op.value && op.is_logic() {
                     let llvm_lhs = llvm_lhs.into_int_value();
                     let llvm_rhs = llvm_rhs.into_int_value();
                     assert!(lhs.ty.is_compatible(&rhs.ty));
