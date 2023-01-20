@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use inkwell::{
     basic_block::BasicBlock,
     types::IntType,
-    values::{AnyValue, AnyValueEnum, PointerValue},
+    values::{AnyValue, AnyValueEnum, PointerValue, BasicValue},
     IntPredicate,
 };
 
@@ -192,10 +192,21 @@ impl<'a> Codegen<'a> {
                     .append_basic_block(llvm_func.func, ".end_setup_array");
 
                 let current_ptr = unsafe {
-                    self.builder.build_in_bounds_gep(ptr, &[index_ty.const_zero(), index_ty.const_zero()], "")
+                    self.builder.build_in_bounds_gep(
+                        ptr,
+                        &[index_ty.const_zero(), index_ty.const_zero()],
+                        "",
+                    )
                 };
                 let end_ptr = unsafe {
-                    self.builder.build_in_bounds_gep(ptr, &[index_ty.const_zero(), index_ty.const_int(count as u64, false)], "")
+                    self.builder.build_in_bounds_gep(
+                        ptr,
+                        &[
+                            index_ty.const_zero(),
+                            index_ty.const_int(count as u64, false),
+                        ],
+                        "",
+                    )
                 };
 
                 self.builder.build_unconditional_branch(header_bb);
@@ -205,13 +216,13 @@ impl<'a> Codegen<'a> {
 
                 let phi = self.builder.build_phi(current_ptr.get_type(), "");
                 let phi_ptr = phi.as_basic_value().into_pointer_value();
-                phi.add_incoming(&[
-                    (&current_ptr, start_bb),
-                ]);
+                phi.add_incoming(&[(&current_ptr, start_bb)]);
                 // TODO rustc manages to compare pointers directly somehow
                 let phi_ptr_int = self.builder.build_ptr_to_int(phi_ptr, index_ty, "");
                 let end_ptr_int = self.builder.build_ptr_to_int(end_ptr, index_ty, "");
-                let cmp = self.builder.build_int_compare(IntPredicate::NE, phi_ptr_int, end_ptr_int, "");
+                let cmp =
+                    self.builder
+                        .build_int_compare(IntPredicate::NE, phi_ptr_int, end_ptr_int, "");
                 self.builder.build_conditional_branch(cmp, body_bb, exit_bb);
 
                 // loop body
@@ -219,14 +230,13 @@ impl<'a> Codegen<'a> {
 
                 match element {
                     AnyValueEnum::IntValue(v) => self.builder.build_store(phi_ptr, v),
-                    _ => todo!()
+                    _ => todo!(),
                 };
                 let next_ptr = unsafe {
-                    self.builder.build_in_bounds_gep(phi_ptr, &[index_ty.const_int(1, false)], "")
+                    self.builder
+                        .build_in_bounds_gep(phi_ptr, &[index_ty.const_int(1, false)], "")
                 };
-                phi.add_incoming(&[
-                    (&next_ptr, body_bb),
-                ]);
+                phi.add_incoming(&[(&next_ptr, body_bb)]);
 
                 self.builder.build_unconditional_branch(header_bb);
 
@@ -367,6 +377,82 @@ impl<'a> Codegen<'a> {
         Ok(result)
     }
 
+    fn compile_condition(
+        &self,
+        llvm_func: &LlvmFunctionScope<'a>,
+        loop_exit: Option<BasicBlock<'a>>,
+        ty: &Rc<LangType>,
+        condition: &Rc<TaggedExpr>,
+        if_true: &Rc<TaggedExpr>,
+        if_false: &Option<Rc<TaggedExpr>>,
+    ) -> Result<Option<AnyValueEnum>, CompilerError> {
+        let condition_value = self.compile_expr(llvm_func, loop_exit, condition)?.unwrap();
+
+        let bb_true = self
+            .module
+            .get_context()
+            .append_basic_block(llvm_func.func, "if_true");
+        let bb_false = self
+            .module
+            .get_context()
+            .append_basic_block(llvm_func.func, "if_false");
+
+        self.builder
+            .build_conditional_branch(condition_value.into_int_value(), bb_true, bb_false);
+
+        self.builder.position_at_end(bb_true);
+
+        let then_value = self.compile_expr(llvm_func, loop_exit, if_true)?;
+
+        if let Some(if_false) = if_false {
+            let bb_end = self
+                .module
+                .get_context()
+                .append_basic_block(llvm_func.func, "if_end");
+            self.builder.build_unconditional_branch(bb_end);
+
+            self.builder.position_at_end(bb_false);
+
+            let else_value = self.compile_expr(llvm_func, loop_exit, if_false)?;
+
+            self.builder.build_unconditional_branch(bb_end);
+
+            self.builder.position_at_end(bb_end);
+
+            // Return type is non-void
+            if !ty.is_compatible(&self.pass1.pass0.void_type()) {
+                let then_value = then_value.unwrap();
+                let else_value = else_value.unwrap();
+
+                let ty = ty.as_llvm_basic_type(self.module.get_context()).unwrap();
+                let phi = self.builder.build_phi(ty, "");
+
+                // TODO into_basic_value func?
+                let then_value = match then_value {
+                    AnyValueEnum::IntValue(v) => v.as_basic_value_enum(),
+                    _ => todo!()
+                };
+                let else_value = match else_value {
+                    AnyValueEnum::IntValue(v) => v.as_basic_value_enum(),
+                    _ => todo!()
+                };
+
+                phi.add_incoming(&[
+                    (&then_value, bb_true),
+                    (&else_value, bb_false)
+                ]);
+
+                Ok(Some(phi.as_any_value_enum()))
+            } else {
+                Ok(None)
+            }
+        } else {
+            self.builder.build_unconditional_branch(bb_false);
+            self.builder.position_at_end(bb_false);
+            Ok(None)
+        }
+    }
+
     pub fn compile_expr(
         &self,
         llvm_func: &LlvmFunctionScope<'a>,
@@ -472,50 +558,7 @@ impl<'a> Codegen<'a> {
                 condition,
                 if_true,
                 if_false,
-            } => {
-                let condition_value = self.compile_expr(llvm_func, loop_exit, condition)?.unwrap();
-
-                let bb_true = self
-                    .module
-                    .get_context()
-                    .append_basic_block(llvm_func.func, "if_true");
-                let bb_false = self
-                    .module
-                    .get_context()
-                    .append_basic_block(llvm_func.func, "if_false");
-
-                self.builder.build_conditional_branch(
-                    condition_value.into_int_value(),
-                    bb_true,
-                    bb_false,
-                );
-
-                self.builder.position_at_end(bb_true);
-                // TODO pick value
-                self.compile_expr(llvm_func, loop_exit, if_true)?;
-
-                if let Some(if_false) = if_false {
-                    let bb_end = self
-                        .module
-                        .get_context()
-                        .append_basic_block(llvm_func.func, "if_end");
-                    self.builder.build_unconditional_branch(bb_end);
-
-                    self.builder.position_at_end(bb_false);
-
-                    // TODO pick value
-                    self.compile_expr(llvm_func, loop_exit, if_false)?;
-
-                    self.builder.build_unconditional_branch(bb_end);
-
-                    self.builder.position_at_end(bb_end);
-                } else {
-                    self.builder.build_unconditional_branch(bb_false);
-                    self.builder.position_at_end(bb_false);
-                }
-
-                Ok(None)
-            }
+            } => self.compile_condition(llvm_func, loop_exit, &expr.ty, condition, if_true, if_false),
             TaggedExprValue::Array(_elements) => {
                 todo!()
             }
