@@ -40,7 +40,7 @@ fn main() {
             CompilerOperation::EmitIntermediateSourceCode
         },
         "main",
-        &out_file,
+        out_file,
     )
     .unwrap();
 }

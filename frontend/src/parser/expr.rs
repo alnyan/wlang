@@ -79,6 +79,42 @@ def_parser!(pub parse_return<S>(input: &mut S) -> Rc<Node> {
     Ok(Rc::new(Node::Return(return_expr)))
 });
 
+def_parser!(pub parse_array<S>(input: &mut S) -> Rc<Node> {
+    if let Some(token) = input.peek() ? && token == Token::Punctuation(Punctuation::RBracket) {
+        input.next()?.unwrap();
+        return Ok(Rc::new(Node::Array(vec![])));
+    }
+
+    let first = parse_expr(input)?;
+
+    let Some(token) = input.next()? else {
+        return Err(ParserError::UnexpectedEof);
+    };
+
+    match token {
+        Token::Punctuation(Punctuation::Semicolon) => {
+            let count = parse_expr(input)?;
+            expect!(input, Token::Punctuation(Punctuation::RBracket), "RBracket".to_owned());
+
+            Ok(Rc::new(Node::ArrayRepeat(first, count)))
+        },
+        Token::Punctuation(Punctuation::Comma) => {
+            let mut items = parse_delimited(
+                input,
+                parse_expr,
+                Token::Punctuation(Punctuation::RBracket),
+                Token::Punctuation(Punctuation::Comma))?;
+            items.insert(0, first);
+
+            Ok(Rc::new(Node::Array(items)))
+        }
+        Token::Punctuation(Punctuation::RBracket) => {
+            Ok(Rc::new(Node::Array(vec![first])))
+        }
+        _ => Err(ParserError::UnexpectedToken(token, "Semicolon/Comma/RBracket".to_owned()))
+    }
+});
+
 def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
     let Some(token) = input.next()? else {
         return Err(ParserError::UnexpectedEof);
@@ -115,14 +151,7 @@ def_parser!(pub parse_atom<S>(input: &mut S) -> Rc<Node> {
             expect!(input, Token::Punctuation(Punctuation::RParen), "RParen".to_owned());
             Ok(inner)
         }
-        Token::Punctuation(Punctuation::LBracket) => {
-            let items = parse_delimited(
-                input,
-                parse_expr,
-                Token::Punctuation(Punctuation::RBracket),
-                Token::Punctuation(Punctuation::Comma))?;
-            Ok(Rc::new(Node::Array(items)))
-        }
+        Token::Punctuation(Punctuation::LBracket) => parse_array(input),
         _ => Err(ParserError::UnexpectedToken(token, "Ident/IntegerLiteral/Keyword/LBrace".to_owned()))
     }
 });

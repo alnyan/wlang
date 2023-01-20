@@ -33,6 +33,7 @@ pub enum TaggedExprValue {
         body: Rc<TaggedExpr>,
     },
     Array(Vec<Rc<TaggedExpr>>),
+    ArrayRepeat(Rc<TaggedExpr>, usize),
     ArrayElement(Rc<TaggedExpr>, Rc<TaggedExpr>),
     BreakLoop,
     Return(Option<Rc<TaggedExpr>>),

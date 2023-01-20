@@ -144,7 +144,7 @@ pub fn pass1_binary(
             fn_index: scope.borrow().function_index(),
             scope_index: scope.borrow().index(),
             ast_node: expr.clone(),
-            value: TaggedExprValue::Assign(lhs, rhs)
+            value: TaggedExprValue::Assign(lhs, rhs),
         }))
     } else {
         let lhs = pass1_expr(pass1, scope, lhs)?;
@@ -373,7 +373,7 @@ pub fn pass1_expr(
             ast_node: expr.clone(),
             fn_index: scope.borrow().function_index(),
             scope_index: scope.borrow().index(),
-            value: TaggedExprValue::StringLiteral(value.clone())
+            value: TaggedExprValue::StringLiteral(value.clone()),
         })),
         Node::Condition {
             condition,
@@ -442,6 +442,25 @@ pub fn pass1_expr(
                 value: TaggedExprValue::Array(elements),
             }))
         }
+        Node::ArrayRepeat(item, count) => {
+            // TODO const exprs
+            let Node::IntegerLiteral(count, t) = count.as_ref() else {
+                todo!();
+            };
+            if !t.is_empty() && t != "u64" {
+                todo!();
+            }
+
+            let item = pass1_expr(pass1, scope, item)?;
+
+            Ok(Rc::new(TaggedExpr {
+                ty: item.ty.clone().make_sized_array_type(*count as usize),
+                fn_index: scope.borrow().function_index(),
+                scope_index: scope.borrow().index(),
+                ast_node: expr.clone(),
+                value: TaggedExprValue::ArrayRepeat(item, *count as usize),
+            }))
+        }
         Node::Dereference(ptr) => {
             let ptr = pass1_expr(pass1, scope, ptr)?;
 
@@ -464,7 +483,7 @@ pub fn pass1_expr(
                 fn_index: scope.borrow().function_index(),
                 scope_index: scope.borrow().index(),
                 ast_node: expr.clone(),
-                value: TaggedExprValue::Reference(lvalue)
+                value: TaggedExprValue::Reference(lvalue),
             }))
         }
         Node::Return(return_expr) => {

@@ -1,4 +1,4 @@
-extern fn printf(s: *i8, v: *i8);
+extern fn printf(s: *i8, v: i64);
 
 fn my_memcpy(dst: *i8, src: *i8, count: u64) -> *i8 {
     let d0: *i8 = dst;
@@ -11,9 +11,18 @@ fn my_memcpy(dst: *i8, src: *i8, count: u64) -> *i8 {
 }
 
 fn main() -> u64 {
-    let array: [i8; 6] = [0i8, 0i8, 0i8, 0i8, 0i8, 0i8];
-    my_memcpy(&array[0], "Hello", 5u64);
+    let v: i64 = 1;
+    let array: [i64; 8] = [v; 8];
+    array[4] = 2;
+    array[5] = 2;
+    array[6] = 2;
+    array[7] = 2;
 
-    printf("%s\n", &array[0]);
+    let c: i64 = 0;
+    while c < 8 {
+        printf("%zd\n", array[c]);
+        c = c + 1;
+    }
+
     0u64
 }

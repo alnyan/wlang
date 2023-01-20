@@ -176,7 +176,10 @@ impl<'a> Codegen<'a> {
             }
             TaggedLvalueExprValue::Dereference(value) => {
                 // Compile-expr will already derefence any lvalue
-                let value = self.compile_expr(llvm_func, loop_exit, value)?.unwrap().into_pointer_value();
+                let value = self
+                    .compile_expr(llvm_func, loop_exit, value)?
+                    .unwrap()
+                    .into_pointer_value();
                 // if !value.get_type().get_element_type().is_pointer_type() {
                 //     todo!("LValue cannot be a non-reference type");
                 // }
@@ -323,10 +326,13 @@ impl<'a> Codegen<'a> {
 
                 param.map(IdentValue::Argument)
             }
-        } else if let Some(gv) = self.globals.borrow().get(name) {
-            Some(IdentValue::Variable(gv.as_pointer_value()))
         } else {
-            None
+            self.globals
+                .borrow()
+                .get(name)
+                .copied()
+                .map(LlvmGlobalValue::as_pointer_value)
+                .map(IdentValue::Variable)
         }
     }
 }

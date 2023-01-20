@@ -2,7 +2,9 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use inkwell::{
     basic_block::BasicBlock,
-    values::{AnyValue, AnyValueEnum},
+    types::IntType,
+    values::{AnyValue, AnyValueEnum, PointerValue},
+    IntPredicate,
 };
 
 use crate::{types::LangIntType, CompilerError, LangType, TaggedExpr, TaggedExprValue};
@@ -106,6 +108,135 @@ impl<'a> Codegen<'a> {
         Ok(())
     }
 
+    fn compile_manual_array_initializer(
+        &self,
+        llvm_func: &LlvmFunctionScope<'a>,
+        loop_exit: Option<BasicBlock<'a>>,
+        ptr: PointerValue,
+        ty: IntType,
+        elements: &[Rc<TaggedExpr>],
+    ) -> Result<(), CompilerError> {
+        assert!(!elements.is_empty());
+
+        // If value is a const-int array, use LLVM's const_array,
+        //  otherwise, use per-element assignment
+        if let Ok(const_ints) = elements
+            .iter()
+            .map(|e| match &e.value {
+                TaggedExprValue::IntegerLiteral(int) => Ok(ty.const_int(*int, false)),
+                _ => Err(()),
+            })
+            .collect::<Result<Vec<_>, _>>()
+        {
+            let const_array = ty.const_array(&const_ints);
+
+            self.builder.build_store(ptr, const_array);
+        } else {
+            let zero_index = self.module.get_context().i64_type().const_zero();
+            for (i, elem) in elements.iter().enumerate() {
+                let elem = self.compile_expr(llvm_func, loop_exit, elem)?.unwrap();
+                let index = self
+                    .module
+                    .get_context()
+                    .i64_type()
+                    .const_int(i as u64, false);
+                let gep = unsafe {
+                    self.builder
+                        .build_in_bounds_gep(ptr, &[zero_index, index], "")
+                };
+
+                self.builder.build_store(gep, elem.into_int_value());
+            }
+        }
+
+        Ok(())
+    }
+
+    fn compile_repeat_array_initializer(
+        &self,
+        llvm_func: &LlvmFunctionScope<'a>,
+        loop_exit: Option<BasicBlock<'a>>,
+        ptr: PointerValue,
+        ty: IntType,
+        element: &Rc<TaggedExpr>,
+        count: usize,
+    ) -> Result<(), CompilerError> {
+        if let TaggedExprValue::IntegerLiteral(value) = &element.value {
+            // Use LLVM's const_array
+            let values = vec![ty.const_int(*value, false); count];
+            let const_array = ty.const_array(&values);
+
+            self.builder.build_store(ptr, const_array);
+        } else {
+            let element = self.compile_expr(llvm_func, loop_exit, element)?.unwrap();
+            let index_ty = self.module.get_context().i64_type();
+
+            if count <= 4 {
+                // Just store the values directly
+                todo!()
+            } else {
+                // NOTE this code was derived from what I saw rustc generate
+                // Make a loop to copy the elements
+                let start_bb = self.builder.get_insert_block().unwrap();
+                let header_bb = self
+                    .module
+                    .get_context()
+                    .append_basic_block(llvm_func.func, ".setup_array_header");
+                let body_bb = self
+                    .module
+                    .get_context()
+                    .append_basic_block(llvm_func.func, ".setup_array");
+                let exit_bb = self
+                    .module
+                    .get_context()
+                    .append_basic_block(llvm_func.func, ".end_setup_array");
+
+                let current_ptr = unsafe {
+                    self.builder.build_in_bounds_gep(ptr, &[index_ty.const_zero(), index_ty.const_zero()], "")
+                };
+                let end_ptr = unsafe {
+                    self.builder.build_in_bounds_gep(ptr, &[index_ty.const_zero(), index_ty.const_int(count as u64, false)], "")
+                };
+
+                self.builder.build_unconditional_branch(header_bb);
+
+                // loop header
+                self.builder.position_at_end(header_bb);
+
+                let phi = self.builder.build_phi(current_ptr.get_type(), "");
+                let phi_ptr = phi.as_basic_value().into_pointer_value();
+                phi.add_incoming(&[
+                    (&current_ptr, start_bb),
+                ]);
+                // TODO rustc manages to compare pointers directly somehow
+                let phi_ptr_int = self.builder.build_ptr_to_int(phi_ptr, index_ty, "");
+                let end_ptr_int = self.builder.build_ptr_to_int(end_ptr, index_ty, "");
+                let cmp = self.builder.build_int_compare(IntPredicate::NE, phi_ptr_int, end_ptr_int, "");
+                self.builder.build_conditional_branch(cmp, body_bb, exit_bb);
+
+                // loop body
+                self.builder.position_at_end(body_bb);
+
+                match element {
+                    AnyValueEnum::IntValue(v) => self.builder.build_store(phi_ptr, v),
+                    _ => todo!()
+                };
+                let next_ptr = unsafe {
+                    self.builder.build_in_bounds_gep(phi_ptr, &[index_ty.const_int(1, false)], "")
+                };
+                phi.add_incoming(&[
+                    (&next_ptr, body_bb),
+                ]);
+
+                self.builder.build_unconditional_branch(header_bb);
+
+                self.builder.position_at_end(exit_bb);
+            }
+        }
+
+        Ok(())
+    }
+
     fn compile_local_definition(
         &self,
         llvm_func: &LlvmFunctionScope<'a>,
@@ -145,40 +276,15 @@ impl<'a> Codegen<'a> {
                     .builder
                     .build_alloca(ty.array_type((*size).try_into().unwrap()), name);
 
-                let TaggedExprValue::Array(elements) = &value.value else {
-                    todo!();
-                };
-                assert!(!elements.is_empty());
-
-                // If value is a const-int array, use LLVM's const_array,
-                //  otherwise, use per-element assignment
-                if let Ok(const_ints) = elements
-                    .iter()
-                    .map(|e| match &e.value {
-                        TaggedExprValue::IntegerLiteral(int) => Ok(ty.const_int(*int, false)),
-                        _ => Err(()),
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-                {
-                    let const_array = ty.const_array(&const_ints);
-
-                    self.builder.build_store(ptr, const_array);
-                } else {
-                    let zero_index = self.module.get_context().i64_type().const_zero();
-                    for (i, elem) in elements.iter().enumerate() {
-                        let elem = self.compile_expr(llvm_func, loop_exit, elem)?.unwrap();
-                        let index = self
-                            .module
-                            .get_context()
-                            .i64_type()
-                            .const_int(i as u64, false);
-                        let gep = unsafe {
-                            self.builder
-                                .build_in_bounds_gep(ptr, &[zero_index, index], "")
-                        };
-
-                        self.builder.build_store(gep, elem.into_int_value());
-                    }
+                match &value.value {
+                    TaggedExprValue::Array(elements) => self.compile_manual_array_initializer(
+                        llvm_func, loop_exit, ptr, ty, elements,
+                    )?,
+                    TaggedExprValue::ArrayRepeat(element, count) => self
+                        .compile_repeat_array_initializer(
+                            llvm_func, loop_exit, ptr, ty, element, *count,
+                        )?,
+                    _ => todo!(),
                 }
 
                 ptr
@@ -411,6 +517,9 @@ impl<'a> Codegen<'a> {
                 Ok(None)
             }
             TaggedExprValue::Array(_elements) => {
+                todo!()
+            }
+            TaggedExprValue::ArrayRepeat(_element, _count) => {
                 todo!()
             }
             TaggedExprValue::ArrayElement(array, index) => {

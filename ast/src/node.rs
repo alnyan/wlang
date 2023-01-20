@@ -19,6 +19,7 @@ pub enum Node {
     Binary(Token, Rc<Node>, Rc<Node>),
     Type(TypeNode),
     Array(Vec<Rc<Node>>),
+    ArrayRepeat(Rc<Node>, Rc<Node>),
     ArrayElement(Rc<Node>, Rc<Node>),
     Call(Rc<Node>, Vec<Rc<Node>>),
     Function {
