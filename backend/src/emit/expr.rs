@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, cmp::Ordering};
 
 use inkwell::{
     basic_block::BasicBlock,
@@ -34,22 +34,16 @@ impl<'a> Codegen<'a> {
 
                     let s0 = t0.is_signed();
 
-                    if w0 == w1 {
-                        // Identity cast
-                        Some(CastMethod::Identity)
-                    } else if w1 > w0 {
-                        // Destination is larger
-                        if s0 {
-                            // Source is signed, sign-extend
-                            Some(CastMethod::IntToLargerIntSignExtend)
-                        } else {
-                            // Source is unsigned, zero-extend
-                            Some(CastMethod::IntToLargerIntZeroExtend)
-                        }
-                    } else {
-                        // Destination is smaller, truncate
-                        Some(CastMethod::IntToSmallerInt)
-                    }
+                    Some(match w0.cmp(&w1) {
+                        // Same width
+                        Ordering::Equal => CastMethod::Identity,
+                        // Smaller to larger, sign extend
+                        Ordering::Less if s0 => CastMethod::IntToLargerIntSignExtend,
+                        // Smaller to larger, zero extend
+                        Ordering::Less => CastMethod::IntToLargerIntZeroExtend,
+                        // Truncate larger to smaller
+                        Ordering::Greater => CastMethod::IntToSmallerInt
+                    })
                 }
                 _ => None,
             },

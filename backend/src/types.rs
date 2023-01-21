@@ -143,7 +143,7 @@ impl LangIntType {
         self as usize % 2 != 0
     }
 
-    pub fn bit_width<'a>(self, target_data: &TargetData) -> usize {
+    pub fn bit_width(self, target_data: &TargetData) -> usize {
         match self {
             Self::U64 | Self::I64 => 64,
             Self::U32 | Self::I32 => 32,
