@@ -1,7 +1,7 @@
 //! Pass 0: Extract all available types (custom + prelude)
 use std::{collections::HashMap, rc::Rc};
 
-use ast::Node;
+use ast::ItemNode;
 
 use crate::types::LangIntType;
 
@@ -56,7 +56,7 @@ impl Pass0Program {
     }
 }
 
-pub fn pass0_program(_items: &[Rc<Node>]) -> Result<Pass0Program, CompilerError> {
+pub fn pass0_program(_items: &[Rc<ItemNode>]) -> Result<Pass0Program, CompilerError> {
     // TODO custom types
     let i8_type = Rc::new(LangType::IntType(LangIntType::I8));
     let i64_type = Rc::new(LangType::IntType(LangIntType::I64));

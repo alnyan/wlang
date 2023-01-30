@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use ast::Node;
+use ast::{Node, ItemNode};
 
 use crate::{
     CompilerError, FunctionImplementation, FunctionSignature, GlobalValue, LangFunction,
@@ -93,7 +93,7 @@ pub fn pass1_global_definition(
 
 pub fn pass1_program(
     pass0: Pass0Program,
-    items: &[Rc<Node>],
+    items: &[Rc<ItemNode>],
 ) -> Result<Pass1Program, CompilerError> {
     let mut pass1 = Pass1Program {
         functions: vec![],
@@ -104,7 +104,7 @@ pub fn pass1_program(
     // Extract function signatures and globals
     for item in items {
         match item.as_ref() {
-            Node::Function {
+            ItemNode::Function {
                 name,
                 args,
                 ret_type,
@@ -120,7 +120,7 @@ pub fn pass1_program(
                     implementation: None,
                 });
             }
-            Node::ExternFunction {
+            ItemNode::ExternFunction {
                 name,
                 ret_type,
                 arg_types,
@@ -135,7 +135,7 @@ pub fn pass1_program(
                     implementation: None,
                 });
             }
-            Node::GlobalDefinition {
+            ItemNode::GlobalDefinition {
                 is_const,
                 name,
                 ty,
@@ -144,7 +144,6 @@ pub fn pass1_program(
                 let gv = pass1_global_definition(&pass1, *is_const, ty, value.clone())?;
                 pass1.globals.insert(name.clone(), gv);
             }
-            _ => todo!(),
         }
     }
 

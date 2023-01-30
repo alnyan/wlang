@@ -10,6 +10,27 @@ pub enum TypeNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ItemNode {
+    Function {
+        name: String,
+        ret_type: Option<Rc<Node>>,
+        args: Vec<(Rc<Node>, Rc<Node>)>,
+        body: Rc<Node>,
+    },
+    GlobalDefinition {
+        name: String,
+        is_const: bool,
+        ty: Rc<Node>,
+        value: Rc<Node>,
+    },
+    ExternFunction {
+        name: String,
+        ret_type: Option<Rc<Node>>,
+        arg_types: Vec<(Rc<Node>, Rc<Node>)>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Ident(String),
     Reference(Rc<Node>),
@@ -22,12 +43,6 @@ pub enum Node {
     ArrayRepeat(Rc<Node>, Rc<Node>),
     ArrayElement(Rc<Node>, Rc<Node>),
     Call(Rc<Node>, Vec<Rc<Node>>),
-    Function {
-        name: String,
-        ret_type: Option<Rc<Node>>,
-        args: Vec<(Rc<Node>, Rc<Node>)>,
-        body: Rc<Node>,
-    },
     Block(Vec<Rc<Node>>),
     Statement(Rc<Node>),
     BreakLoop,
@@ -41,21 +56,11 @@ pub enum Node {
         condition: Option<Rc<Node>>,
         body: Rc<Node>,
     },
-    GlobalDefinition {
-        name: String,
-        is_const: bool,
-        ty: Rc<Node>,
-        value: Rc<Node>,
-    },
     LocalDefinition {
         name: String,
         is_mutable: bool,
         ty: Rc<Node>,
         value: Rc<Node>,
     },
-    ExternFunction {
-        name: String,
-        ret_type: Option<Rc<Node>>,
-        arg_types: Vec<(Rc<Node>, Rc<Node>)>,
-    },
+    Item(Rc<ItemNode>)
 }
