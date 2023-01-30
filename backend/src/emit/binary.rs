@@ -72,6 +72,7 @@ impl<'a> Codegen<'a> {
         })
     }
 
+    /// Emits a general binary expression
     pub fn compile_binary(
         &self,
         llvm_func: &LlvmFunctionScope<'a>,

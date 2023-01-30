@@ -14,47 +14,51 @@ use crate::{
 
 use super::{Codegen, IdentValue, LlvmFunctionScope, LlvmScope};
 
+/// Describes LLVM cast method to use for type cast
 #[derive(Debug, Clone, Copy)]
 enum CastMethod {
+    /// e.g. usize -> *i8
     IntToPtr,
+    /// e.g. *i8 -> usize
     PtrToInt,
+    /// e.g. i8 -> u8, i8 -> i8
     Identity,
+    /// e.g. i64 -> u8
     IntToSmallerInt,
+    /// e.g. u8 -> i16, u8 -> u16
     IntToLargerIntZeroExtend,
+    /// e.g. i8 -> i16, i8 -> u16
     IntToLargerIntSignExtend,
 }
 
 impl<'a> Codegen<'a> {
+    /// For given `src_ty` and `dst_ty`, tries to pick a [CastMethod]
     fn cast_method(&self, src_ty: &LangType, dst_ty: &LangType) -> Option<CastMethod> {
-        match src_ty {
-            LangType::IntType(LangIntType::USIZE) if dst_ty.is_pointer() => {
+        match (src_ty, dst_ty) {
+            (LangType::Pointer(_), LangType::IntType(LangIntType::USIZE)) => {
+                Some(CastMethod::PtrToInt)
+            }
+            (LangType::IntType(LangIntType::USIZE), LangType::Pointer(_)) => {
                 Some(CastMethod::IntToPtr)
             }
-            LangType::IntType(t0) => match dst_ty {
-                LangType::IntType(t1) => {
-                    let w0 = t0.bit_width(&self.target_data);
-                    let w1 = t1.bit_width(&self.target_data);
+            (LangType::IntType(t0), LangType::IntType(t1)) => {
+                let w0 = t0.bit_width(&self.target_data);
+                let w1 = t1.bit_width(&self.target_data);
 
-                    let s0 = t0.is_signed();
+                let s0 = t0.is_signed();
 
-                    Some(match w0.cmp(&w1) {
-                        // Same width
-                        Ordering::Equal => CastMethod::Identity,
-                        // Smaller to larger, sign extend
-                        Ordering::Less if s0 => CastMethod::IntToLargerIntSignExtend,
-                        // Smaller to larger, zero extend
-                        Ordering::Less => CastMethod::IntToLargerIntZeroExtend,
-                        // Truncate larger to smaller
-                        Ordering::Greater => CastMethod::IntToSmallerInt,
-                    })
-                }
-                _ => None,
-            },
-            LangType::Pointer(_) => match dst_ty {
-                LangType::IntType(LangIntType::USIZE) => Some(CastMethod::PtrToInt),
-                _ => None,
-            },
-            _ => None,
+                Some(match w0.cmp(&w1) {
+                    // Same width
+                    Ordering::Equal => CastMethod::Identity,
+                    // Smaller to larger, sign extend
+                    Ordering::Less if s0 => CastMethod::IntToLargerIntSignExtend,
+                    // Smaller to larger, zero extend
+                    Ordering::Less => CastMethod::IntToLargerIntZeroExtend,
+                    // Truncate larger to smaller
+                    Ordering::Greater => CastMethod::IntToSmallerInt,
+                })
+            }
+            (_, _) => None,
         }
     }
 
@@ -457,6 +461,8 @@ impl<'a> Codegen<'a> {
         }
     }
 
+    /// Compiles a general expression into LLVM IR instructions, returning the result it evaluates
+    /// to, if any
     pub fn compile_expr(
         &self,
         llvm_func: &LlvmFunctionScope<'a>,
