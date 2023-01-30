@@ -7,7 +7,7 @@ use ast::{
 use inkwell::{
     basic_block::BasicBlock,
     values::{AnyValueEnum, IntValue},
-    IntPredicate,
+    AddressSpace, IntPredicate,
 };
 
 use crate::{CompilerError, LangType, TaggedExpr};
@@ -102,7 +102,7 @@ impl<'a> Codegen<'a> {
                     let llvm_lhs = llvm_lhs.into_pointer_value();
                     let llvm_rhs = llvm_rhs.into_int_value();
 
-                    let value = unsafe { self.builder.build_gep(llvm_lhs, &[llvm_rhs], "") };
+                    let value = unsafe { self.builder.build_gep(self.module.get_context().i8_type().ptr_type(AddressSpace::default()), llvm_lhs, &[llvm_rhs], "") };
                     value.into()
                 } else {
                     todo!()

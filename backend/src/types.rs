@@ -61,9 +61,9 @@ impl LangType {
     }
 
     pub fn make_sized_array_type(self: Rc<Self>, size: usize) -> Rc<LangType> {
-        if !self.is_integer() {
-            todo!(); // Nested arrays n stuff?
-        }
+        // if !self.is_integer() {
+        //     todo!(); // Nested arrays n stuff?
+        // }
         Rc::new(Self::SizedArrayType(self, size))
     }
 
@@ -95,7 +95,9 @@ impl LangType {
             Self::IntType(it) => Some(it.as_llvm_basic_type(context, target_data)),
             Self::BoolType => Some(context.bool_type().into()),
             Self::Void => None,
-            Self::SizedArrayType(_, _) => todo!("Array"),
+            Self::SizedArrayType(el, n) => el
+                .as_llvm_basic_type(context, target_data)
+                .map(|p| p.array_type((*n).try_into().unwrap()).as_basic_type_enum()),
             Self::Pointer(inner) => match inner.as_llvm_basic_type(context, target_data) {
                 Some(BasicTypeEnum::IntType(t)) => {
                     Some(t.ptr_type(Default::default()).as_basic_type_enum())

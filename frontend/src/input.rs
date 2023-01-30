@@ -19,17 +19,14 @@ pub trait InputPosition {
 
 pub struct StrInput<'a> {
     iter: Peekable<Chars<'a>>,
-    pos: SourcePosition
+    pos: SourcePosition,
 }
 
 impl<'a> StrInput<'a> {
     pub fn new(data: &'a str) -> Self {
         Self {
             iter: data.chars().peekable(),
-            pos: SourcePosition {
-                line: 0,
-                column: 0
-            }
+            pos: SourcePosition { line: 0, column: 0 },
         }
     }
 }

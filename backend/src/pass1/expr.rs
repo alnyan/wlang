@@ -1,6 +1,10 @@
 use std::{cell::RefCell, rc::Rc};
 
-use ast::{node::TypeNode, token::{BasicOperator, TokenValue}, Node, Token};
+use ast::{
+    node::TypeNode,
+    token::{BasicOperator, TokenValue},
+    Node, Token,
+};
 
 use crate::{CompilerError, LangType, LocalValue, TaggedExpr, TaggedExprValue};
 
@@ -151,7 +155,9 @@ pub fn pass1_binary(
         let rhs = pass1_expr(pass1, scope, rhs)?;
 
         let ty = match op.value {
-            TokenValue::BasicOperator(op) => pass1_basic_binary(pass1, scope, op, &lhs.ty, &rhs.ty)?,
+            TokenValue::BasicOperator(op) => {
+                pass1_basic_binary(pass1, scope, op, &lhs.ty, &rhs.ty)?
+            }
             _ => panic!("{expr:?}"),
         };
 

@@ -24,11 +24,14 @@ macro_rules! expect_match {
 macro_rules! expect {
     ($input:expr, $value:expr) => {
         let Some(_token) = $crate::input::Input::next($input)? else {
-                            return Err($crate::parser::ParserError::UnexpectedEof);
-                        };
+                                            return Err($crate::parser::ParserError::UnexpectedEof);
+                                        };
 
         if _token.value != $value {
-            return Err($crate::parser::ParserError::unexpected_token(_token, vec![$value]))
+            return Err($crate::parser::ParserError::unexpected_token(
+                _token,
+                vec![$value],
+            ));
         }
     };
 }

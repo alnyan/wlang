@@ -1,13 +1,16 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, cmp::Ordering};
+use std::{cell::RefCell, cmp::Ordering, collections::HashMap, rc::Rc};
 
 use inkwell::{
     basic_block::BasicBlock,
-    types::IntType,
-    values::{AnyValue, AnyValueEnum, BasicValue, PointerValue},
+    types::{BasicType, BasicTypeEnum},
+    values::{AnyValue, AnyValueEnum, PointerValue},
     IntPredicate,
 };
 
-use crate::{types::LangIntType, CompilerError, LangType, TaggedExpr, TaggedExprValue};
+use crate::{
+    emit::ConvertValueEnum, types::LangIntType, CompilerError, LangType, TaggedExpr,
+    TaggedExprValue,
+};
 
 use super::{Codegen, IdentValue, LlvmFunctionScope, LlvmScope};
 
@@ -42,7 +45,7 @@ impl<'a> Codegen<'a> {
                         // Smaller to larger, zero extend
                         Ordering::Less => CastMethod::IntToLargerIntZeroExtend,
                         // Truncate larger to smaller
-                        Ordering::Greater => CastMethod::IntToSmallerInt
+                        Ordering::Greater => CastMethod::IntToSmallerInt,
                     })
                 }
                 _ => None,
@@ -105,14 +108,19 @@ impl<'a> Codegen<'a> {
         llvm_func: &LlvmFunctionScope<'a>,
         loop_exit: Option<BasicBlock<'a>>,
         ptr: PointerValue,
-        ty: IntType,
+        ty: BasicTypeEnum,
         elements: &[Rc<TaggedExpr>],
     ) -> Result<(), CompilerError> {
+        let usize_ty = self
+            .module
+            .get_context()
+            .ptr_sized_int_type(&self.target_data, Default::default());
+        let array_ty = ty.array_type(elements.len().try_into().unwrap());
         assert!(!elements.is_empty());
 
         // If value is a const-int array, use LLVM's const_array,
         //  otherwise, use per-element assignment
-        if let Ok(const_ints) = elements
+        if let BasicTypeEnum::IntType(ty) = ty && let Ok(const_ints) = elements
             .iter()
             .map(|e| match &e.value {
                 TaggedExprValue::IntegerLiteral(int) => Ok(ty.const_int(*int, false)),
@@ -124,20 +132,16 @@ impl<'a> Codegen<'a> {
 
             self.builder.build_store(ptr, const_array);
         } else {
-            let zero_index = self.module.get_context().i64_type().const_zero();
+            let zero_index = usize_ty.const_zero();
             for (i, elem) in elements.iter().enumerate() {
-                let elem = self.compile_expr(llvm_func, loop_exit, elem)?.unwrap();
-                let index = self
-                    .module
-                    .get_context()
-                    .i64_type()
-                    .const_int(i as u64, false);
+                let elem = self.compile_expr(llvm_func, loop_exit, elem)?.and_then(ConvertValueEnum::into_basic_value_enum).unwrap();
+                let index = usize_ty.const_int(i as u64, false);
+
                 let gep = unsafe {
-                    self.builder
-                        .build_in_bounds_gep(ptr, &[zero_index, index], "")
+                    self.builder.build_in_bounds_gep(array_ty, ptr, &[zero_index, index], "")
                 };
 
-                self.builder.build_store(gep, elem.into_int_value());
+                self.builder.build_store(gep, elem);
             }
         }
 
@@ -149,19 +153,27 @@ impl<'a> Codegen<'a> {
         llvm_func: &LlvmFunctionScope<'a>,
         loop_exit: Option<BasicBlock<'a>>,
         ptr: PointerValue,
-        ty: IntType,
+        ty: BasicTypeEnum,
         element: &Rc<TaggedExpr>,
         count: usize,
     ) -> Result<(), CompilerError> {
         if let TaggedExprValue::IntegerLiteral(value) = &element.value {
+            let ty = ty.into_int_type();
             // Use LLVM's const_array
             let values = vec![ty.const_int(*value, false); count];
             let const_array = ty.const_array(&values);
 
             self.builder.build_store(ptr, const_array);
         } else {
-            let element = self.compile_expr(llvm_func, loop_exit, element)?.unwrap();
-            let index_ty = self.module.get_context().i64_type();
+            let element = self
+                .compile_expr(llvm_func, loop_exit, element)?
+                .and_then(ConvertValueEnum::into_basic_value_enum)
+                .unwrap();
+            let index_ty = self
+                .module
+                .get_context()
+                .ptr_sized_int_type(&self.target_data, Default::default());
+            let array_ty = ty.array_type(count.try_into().unwrap());
 
             if count <= 4 {
                 // Just store the values directly
@@ -185,6 +197,7 @@ impl<'a> Codegen<'a> {
 
                 let current_ptr = unsafe {
                     self.builder.build_in_bounds_gep(
+                        array_ty,
                         ptr,
                         &[index_ty.const_zero(), index_ty.const_zero()],
                         "",
@@ -192,6 +205,7 @@ impl<'a> Codegen<'a> {
                 };
                 let end_ptr = unsafe {
                     self.builder.build_in_bounds_gep(
+                        array_ty,
                         ptr,
                         &[
                             index_ty.const_zero(),
@@ -220,13 +234,14 @@ impl<'a> Codegen<'a> {
                 // loop body
                 self.builder.position_at_end(body_bb);
 
-                match element {
-                    AnyValueEnum::IntValue(v) => self.builder.build_store(phi_ptr, v),
-                    _ => todo!(),
-                };
+                self.builder.build_store(phi_ptr, element);
                 let next_ptr = unsafe {
-                    self.builder
-                        .build_in_bounds_gep(phi_ptr, &[index_ty.const_int(1, false)], "")
+                    self.builder.build_in_bounds_gep(
+                        ty,
+                        phi_ptr,
+                        &[index_ty.const_int(1, false)],
+                        "",
+                    )
                 };
                 phi.add_incoming(&[(&next_ptr, body_bb)]);
 
@@ -271,11 +286,10 @@ impl<'a> Codegen<'a> {
                 ptr
             }
             LangType::SizedArrayType(ty, size) => {
-                let LangType::IntType(ty) = ty.as_ref() else {
-                    todo!("Array elements can only be integer types (currently)");
-                };
+                let ty = ty
+                    .as_llvm_basic_type(self.module.get_context(), &self.target_data)
+                    .unwrap();
 
-                let (ty, _) = ty.as_llvm_int_type(self.module.get_context(), &self.target_data);
                 let ptr = self
                     .builder
                     .build_alloca(ty.array_type((*size).try_into().unwrap()), name);
@@ -418,23 +432,17 @@ impl<'a> Codegen<'a> {
 
             // Return type is non-void
             if !ty.is_compatible(&self.pass1.pass0.void_type()) {
-                let then_value = then_value.unwrap();
-                let else_value = else_value.unwrap();
+                let then_value = then_value
+                    .and_then(ConvertValueEnum::into_basic_value_enum)
+                    .unwrap();
+                let else_value = else_value
+                    .and_then(ConvertValueEnum::into_basic_value_enum)
+                    .unwrap();
 
                 let ty = ty
                     .as_llvm_basic_type(self.module.get_context(), &self.target_data)
                     .unwrap();
                 let phi = self.builder.build_phi(ty, "");
-
-                // TODO into_basic_value func?
-                let then_value = match then_value {
-                    AnyValueEnum::IntValue(v) => v.as_basic_value_enum(),
-                    _ => todo!(),
-                };
-                let else_value = match else_value {
-                    AnyValueEnum::IntValue(v) => v.as_basic_value_enum(),
-                    _ => todo!(),
-                };
 
                 phi.add_incoming(&[(&then_value, bb_true), (&else_value, bb_false)]);
 
@@ -503,10 +511,14 @@ impl<'a> Codegen<'a> {
             }
             TaggedExprValue::Ident(name) => {
                 let ptr = self.ident_ptr(llvm_func, &scope, name).unwrap();
+                let ty = expr
+                    .ty
+                    .as_llvm_basic_type(self.module.get_context(), &self.target_data)
+                    .unwrap();
                 Ok(Some(match ptr {
                     IdentValue::Variable(ptr) => match expr.ty.as_ref() {
                         LangType::IntType(_) | LangType::BoolType | LangType::Pointer(_) => {
-                            self.builder.build_load(ptr, "").into()
+                            self.builder.build_load(ty, ptr, "").into()
                         }
                         LangType::SizedArrayType(_, _) => ptr.into(),
                         LangType::Void => todo!("Reference to void-typed identifier?"),
@@ -564,6 +576,10 @@ impl<'a> Codegen<'a> {
                 todo!()
             }
             TaggedExprValue::ArrayElement(array, index) => {
+                let array_ty = array
+                    .ty
+                    .as_llvm_basic_type(self.module.get_context(), &self.target_data)
+                    .unwrap();
                 let array = self
                     .compile_expr(llvm_func, loop_exit, array)?
                     .unwrap()
@@ -576,25 +592,33 @@ impl<'a> Codegen<'a> {
                 // TODO emit bounds check here
 
                 let zero_index = self.module.get_context().i64_type().const_zero();
+                let pointee_ty = expr
+                    .ty
+                    .as_llvm_basic_type(self.module.get_context(), &self.target_data)
+                    .unwrap();
 
-                let gep = unsafe { self.builder.build_gep(array, &[zero_index, index], "") };
+                let gep = unsafe {
+                    self.builder
+                        .build_gep(array_ty, array, &[zero_index, index], "")
+                };
 
-                Ok(Some(match expr.ty.as_ref() {
-                    LangType::IntType(_) | LangType::BoolType => {
-                        self.builder.build_load(gep, "").into()
-                    }
-                    LangType::SizedArrayType(_, _) => todo!("Nested array indexing"),
-                    LangType::Pointer(_) => todo!("Pointer-typed array indexing"),
-                    LangType::Void => todo!("Void-typed array indexing?"),
-                }))
+                Ok(Some(
+                    self.builder
+                        .build_load(pointee_ty, gep, "")
+                        .as_any_value_enum(),
+                ))
             }
             TaggedExprValue::Dereference(value) => {
                 let value = self.compile_expr(llvm_func, loop_exit, value)?.unwrap();
-                if !value.is_pointer_value() {
-                    todo!();
-                }
+                assert!(value.is_pointer_value());
 
-                let deref = self.builder.build_load(value.into_pointer_value(), "");
+                let pointee_ty = expr
+                    .ty
+                    .as_llvm_basic_type(self.module.get_context(), &self.target_data)
+                    .unwrap();
+                let deref = self
+                    .builder
+                    .build_load(pointee_ty, value.into_pointer_value(), "");
                 Ok(Some(deref.as_any_value_enum()))
             }
             TaggedExprValue::Reference(lvalue) => {
@@ -607,13 +631,12 @@ impl<'a> Codegen<'a> {
             }
             TaggedExprValue::Assign(lhs, rhs) => {
                 let lhs = self.compile_lvalue(llvm_func, loop_exit, lhs)?;
-                let rhs = self.compile_expr(llvm_func, loop_exit, rhs)?.unwrap();
+                let rhs = self
+                    .compile_expr(llvm_func, loop_exit, rhs)?
+                    .and_then(ConvertValueEnum::into_basic_value_enum)
+                    .unwrap();
 
-                match rhs {
-                    AnyValueEnum::IntValue(iv) => self.builder.build_store(lhs, iv),
-                    AnyValueEnum::PointerValue(pv) => self.builder.build_store(lhs, pv),
-                    _ => todo!(),
-                };
+                self.builder.build_store(lhs, rhs);
 
                 Ok(None)
             }

@@ -1,9 +1,8 @@
 use std::rc::Rc;
 
-use ast::{Token, Node};
+use ast::{Node, Token};
 
 use crate::LangType;
-
 
 #[derive(Debug, Clone)]
 pub enum TaggedExprValue {
@@ -69,5 +68,5 @@ pub struct TaggedLvalueExpr {
     pub scope_index: Option<usize>,
     #[derivative(Debug = "ignore")]
     pub ast_node: Rc<Node>,
-    pub value: TaggedLvalueExprValue
+    pub value: TaggedLvalueExprValue,
 }

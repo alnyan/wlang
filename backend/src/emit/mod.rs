@@ -28,6 +28,29 @@ use super::{
     Pass1Program, TaggedExpr,
 };
 
+pub trait ConvertValueEnum<'a> {
+    fn into_basic_value_enum(self) -> Option<BasicValueEnum<'a>>;
+    fn into_basic_metadata_value_enum(self) -> Option<BasicMetadataValueEnum<'a>>;
+}
+
+impl<'a> ConvertValueEnum<'a> for AnyValueEnum<'a> {
+    fn into_basic_value_enum(self) -> Option<BasicValueEnum<'a>> {
+        match self {
+            AnyValueEnum::IntValue(v) => Some(BasicValueEnum::IntValue(v)),
+            AnyValueEnum::PointerValue(v) => Some(BasicValueEnum::PointerValue(v)),
+            _ => todo!(),
+        }
+    }
+
+    fn into_basic_metadata_value_enum(self) -> Option<BasicMetadataValueEnum<'a>> {
+        match self {
+            AnyValueEnum::IntValue(v) => Some(BasicMetadataValueEnum::IntValue(v)),
+            AnyValueEnum::PointerValue(v) => Some(BasicMetadataValueEnum::PointerValue(v)),
+            _ => todo!(),
+        }
+    }
+}
+
 pub struct Codegen<'a> {
     module: Module<'a>,
     builder: Builder<'a>,
@@ -99,18 +122,12 @@ impl<'a> Codegen<'a> {
             .get_context()
             .append_basic_block(llvm_func.func, "entry");
         self.builder.position_at_end(llvm_basic_block);
-        let return_value = self.compile_expr(llvm_func, None, &implementation.body)?;
+        let return_value = self
+            .compile_expr(llvm_func, None, &implementation.body)?
+            .and_then(ConvertValueEnum::into_basic_value_enum);
 
         if let Some(return_value) = return_value {
-            match return_value {
-                AnyValueEnum::IntValue(value) => {
-                    self.builder.build_return(Some(&value));
-                }
-                AnyValueEnum::PointerValue(value) => {
-                    self.builder.build_return(Some(&value));
-                }
-                _ => todo!(),
-            }
+            self.builder.build_return(Some(&return_value));
         } else {
             self.builder.build_return(None);
         }
@@ -151,15 +168,10 @@ impl<'a> Codegen<'a> {
         let compiled_args = args
             .iter()
             .map(|arg| {
-                self.compile_expr(llvm_func_scope, loop_exit, arg)
-                    .map(Option::unwrap)
-                    .map(|arg| match arg {
-                        AnyValueEnum::IntValue(value) => BasicMetadataValueEnum::IntValue(value),
-                        AnyValueEnum::PointerValue(value) => {
-                            BasicMetadataValueEnum::PointerValue(value)
-                        }
-                        _ => todo!(),
-                    })
+                self.compile_expr(llvm_func_scope, loop_exit, arg).map(|v| {
+                    v.and_then(ConvertValueEnum::into_basic_metadata_value_enum)
+                        .unwrap()
+                })
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -198,17 +210,21 @@ impl<'a> Codegen<'a> {
                 Ok(value)
             }
             TaggedLvalueExprValue::ArrayElement(array, index) => {
+                let ty = array
+                    .ty
+                    .as_llvm_basic_type(self.module.get_context(), &self.target_data)
+                    .unwrap();
                 let array = self.compile_lvalue(llvm_func, loop_exit, array)?;
                 let index = self.compile_expr(llvm_func, loop_exit, index)?.unwrap();
-                let zero_index = self.module.get_context().i64_type().const_zero();
-
-                if !array.get_type().get_element_type().is_array_type() {
-                    todo!("Tried to index into a non-array type");
-                }
+                let zero_index = self
+                    .module
+                    .get_context()
+                    .ptr_sized_int_type(&self.target_data, Default::default())
+                    .const_zero();
 
                 let gep = unsafe {
                     self.builder
-                        .build_gep(array, &[zero_index, index.into_int_value()], "")
+                        .build_gep(ty, array, &[zero_index, index.into_int_value()], "")
                 };
                 Ok(gep)
             }
@@ -249,9 +265,11 @@ impl<'a> Codegen<'a> {
                 gstr.set_constant(true);
                 gstr.set_initializer(&value);
 
-                let zero_index = self.module.get_context().i32_type().const_zero();
+                let zero_index = self.module.get_context().ptr_sized_int_type(&self.target_data, Default::default()).const_zero();
+
                 let gep = unsafe {
                     self.builder.build_in_bounds_gep(
+                        value.get_type(),
                         gstr.as_pointer_value(),
                         &[zero_index, zero_index],
                         "",
