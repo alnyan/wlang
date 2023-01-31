@@ -2,6 +2,14 @@ module Lib where
 
 import Data.List (nub)
 
+---- Errors
+data TypeError = UnifyError Type Type
+               | OccursCheck TypeVar Type
+               | ArgumentCountMismatch [Type] [Type]
+               | IntUnifyError TypeVar Type
+               | FloatUnifyError TypeVar Type
+    deriving Show
+
 ---- Types
 -- Type identifier (generated from high-level types through internment process)
 type Id = String
@@ -36,6 +44,18 @@ tU16 = TConst "u16"
 tU8 = TConst "u8"
 tF64 = TConst "f64"
 tF32 = TConst "f32"
+
+tCoreIntNames = [ "i64", "i32", "i16", "i8",
+                  "u64", "u32", "u16", "u8" ]
+tCoreFloatNames = [ "f32", "f64" ]
+
+isCoreInteger :: Type -> Bool
+isCoreInteger (TConst tc) = tc `elem` tCoreIntNames
+isCoreInteger _ = False
+
+isCoreFloat :: Type -> Bool
+isCoreFloat (TConst tc) = tc `elem` tCoreFloatNames
+isCoreFloat _ = False
 
 ---- Substitutions
 -- Defines substitution behavior
@@ -84,3 +104,36 @@ instance Apply Type where
 instance Apply a => Apply [a] where
     apply s = map (apply s)
     ftv = nub . concat . map ftv
+
+
+-- Unification
+class Unify t where
+    mgu :: t -> t -> Either TypeError Subst
+
+instance Unify Type where
+    mgu (TFunction ts t) (TFunction ts' t') = do s1 <- mgu ts ts'
+                                                 s2 <- mgu (apply s1 t) (apply s1 t')
+                                                 return (s2 @@ s1)
+    mgu (TParameterized t ts) (TParameterized t' ts') = do s1 <- mgu t t'
+                                                           s2 <- mgu (apply s1 ts) (apply s1 ts')
+                                                           return (s2 @@ s1)
+    mgu (TPointer t) (TPointer t') = mgu t t'
+    mgu (TConst tc1) (TConst tc2) | tc1 == tc2 = Right nullSubst
+    mgu (TVar u) t = varBind u t
+    mgu t (TVar u) = varBind u t
+    mgu t1 t2 = Left $ UnifyError t1 t2
+
+-- Useful for unifying lists of types
+instance Unify [Type] where
+    mgu as bs | length as /= length bs = Left $ ArgumentCountMismatch as bs
+              | otherwise = loop nullSubst (zip as bs)
+                where loop s [] = Right s
+                      loop s ((t, t'):ts) = do s' <- mgu (apply s t) (apply s t')
+                                               loop (s' @@ s) ts
+
+varBind :: TypeVar -> Type -> Either TypeError Subst
+varBind (TVInt n) t | not $ isCoreInteger t = Left $ IntUnifyError (TVInt n) t
+varBind (TVFloat n) t | not $ isCoreFloat t = Left $ FloatUnifyError (TVFloat n) t
+varBind u t | t == TVar u       = Right nullSubst
+            | u `elem` ftv t    = Left $ OccursCheck u t
+            | otherwise         = Right (u +-> t)
