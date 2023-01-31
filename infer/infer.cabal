@@ -31,6 +31,7 @@ library
       Types.Data
       Types.Subst
       Types.Unify
+      Utils
   other-modules:
       Paths_infer
   hs-source-dirs:

@@ -1,7 +1,8 @@
 module Types.Subst where
 
+import Data.List (nub, intersect)
 import Types.Data
-import Data.List (nub)
+import Result
 
 ---- Substitutions
 -- Defines substitution behavior
@@ -21,6 +22,12 @@ u +-> t = [(u, t)]
 infixr 4 @@
 (@@) :: Subst -> Subst -> Subst
 s1 @@ s2 = [(u, apply s1 t) | (u, t) <- s2] ++ s1
+
+-- Similar to substitution composition, but checks that s1 and s2 don't conflict
+merge :: Subst -> Subst -> Result TypeError Subst
+merge s1 s2 = if agree then Ok $ nub (s1 ++ s2) else Err $ MergeError s1 s2
+    where agree = all (\u -> apply s1 (TVar u) == apply s2 (TVar u))
+                      (map fst s1 `intersect` map fst s2)
 
 -- Apply implementations for different types
 instance Apply Type where

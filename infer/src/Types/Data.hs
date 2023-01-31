@@ -31,6 +31,8 @@ data TypeError = UnifyError Type Type
                | ArgumentCountMismatch [Type] [Type]
                | IntUnifyError TypeVar Type
                | FloatUnifyError TypeVar Type
+               | MatchError Type Type
+               | MergeError Subst Subst
     deriving (Show, Eq)
 
 ---- Constants

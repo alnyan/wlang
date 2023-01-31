@@ -2,9 +2,11 @@
 
 module Types.Unify where
 
+import Control.Monad (foldM)
 import Types.Data
 import Types.Subst
 import Result
+import Utils (mapMT)
 
 -- Unification
 class Unify t where
@@ -18,11 +20,28 @@ instance Unify Type where
                                                            s2 <- mgu (apply s1 ts) (apply s1 ts')
                                                            return (s2 @@ s1)
     mgu (TPointer t) (TPointer t') = mgu t t'
-    mgu (TArray t _) (TArray t' _) = mgu t t'
+    mgu (TArray t n) (TArray t' n') | n == n' = mgu t t'
     mgu (TConst tc1) (TConst tc2) | tc1 == tc2 = Ok nullSubst
     mgu (TVar u) t = varBind u t
     mgu t (TVar u) = varBind u t
     mgu t1 t2 = Err $ UnifyError t1 t2
+
+match :: Type -> Type -> Result TypeError Subst
+match (TFunction ts t) (TFunction ts' t') = do s1 <- matchList ts ts'
+                                               s2 <- match t t'
+                                               merge s1 s2
+match (TParameterized t ts) (TParameterized t' ts') = do s1 <- matchList ts ts'
+                                                         s2 <- match t t'
+                                                         merge s1 s2
+match (TPointer t) (TPointer t') = match t t'
+match (TArray t n) (TArray t' n') | n == n' = match t t'
+match (TConst tc1) (TConst tc2) | tc1 == tc2 = Ok nullSubst
+match (TVar u) t = Ok $ u +-> t
+match t1 t2 = Err $ MatchError t1 t2
+
+matchList :: [Type] -> [Type] -> Result TypeError Subst
+matchList l1 l2 | length l1 /= length l2 = Err $ ArgumentCountMismatch l1 l2
+                | otherwise = mapMT match (zip l1 l2) >>= foldM merge nullSubst
 
 -- Useful for unifying lists of types
 instance Unify [Type] where
