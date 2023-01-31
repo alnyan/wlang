@@ -1,6 +1,6 @@
 module Lib where
 
-import Data.List (find, nub)
+import Data.List (nub)
 
 ---- Types
 -- Type identifier (generated from high-level types through internment process)
@@ -16,6 +16,7 @@ data Type = TVar TypeVar                -- e.g. `{integer #n}`, `{float #m}`, `T
           | TParameterized Type [Type]  -- e.g. `Result<Type1, E>`
           | TArray Type Int             -- e.g. `[T; 1024]`
           | TPointer Type               -- e.g. `*T`
+          | TFunction [Type] Type       -- e.g. `fn(T, U, V, ...) -> R`
     deriving (Eq, Show)
 
 data TypeVar = TVAny Id                 -- Can take any type, like `T` in `struct X<T>`
@@ -68,13 +69,15 @@ instance Apply Type where
     apply s (TParameterized t gs) = (TParameterized (apply s t) (apply s gs))
     apply s (TArray t n) = (TArray (apply s t) n)
     apply s (TPointer t) = (TPointer (apply s t))
+    apply s (TFunction ts t) = (TFunction (apply s ts) (apply s t))
     -- Otherwise, just return the value
-    apply s (TConst t) = (TConst t)
+    apply _ (TConst t) = (TConst t)
 
     ftv (TVar u) = [u]
     ftv (TParameterized t gs) = (nub . concat) [(ftv t), (ftv gs)]
     ftv (TArray t _) = ftv t
     ftv (TPointer t) = ftv t
+    ftv (TFunction ts t) = (nub . concat) [(ftv ts), (ftv t)]
     ftv (TConst _) = []
 
 -- Auto-impl Apply for [T: Apply]

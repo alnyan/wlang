@@ -2,14 +2,12 @@ import Test.HUnit
 import Lib
 
 -- Subst application
-testTypeSubst1 :: Test
 testTypeSubst1 = TestCase $
     assertEqual "{T +-> MyType} T → MyType" t2 (apply s t1)
         where t1 = TVar (TVAny "T")
               t2 = TConst "MyType"
               s = ((TVAny "T") +-> t2)
 
-testTypeSubst2 :: Test
 testTypeSubst2 = TestCase $
     assertEqual "{T +-> MyType} Result<T, U> → Result<MyType, U>" tres (apply s tsrc)
         where ut = TVAny "T"
@@ -18,7 +16,6 @@ testTypeSubst2 = TestCase $
               tres = TParameterized (TConst "Result") [(TConst "MyType"), (TVar uu)]
               s = (ut +-> (TConst "MyType"))
 
-testTypeSubst3 :: Test
 testTypeSubst3 = TestCase $
     assertEqual "{i0 +-> i64} Result<T, U> → Result<T, U>" tsrc (apply s tsrc)
         where ut = TVAny "T"
@@ -26,7 +23,13 @@ testTypeSubst3 = TestCase $
               tsrc = TParameterized (TConst "Result") [(TVar ut), (TVar uu)]
               s = ((TVInt 0) +-> (TConst "i64"))
 
-testNullSubst :: Test
+testTypeSubst4 = TestCase $
+    assertEqual "{i0 +-> i64} (f(i0, i0) -> i0) → f(i64, i64) -> i64" tres (apply s tsrc)
+        where i0 = TVInt 0
+              tsrc = TFunction [TVar i0, TVar i0] (TVar i0)
+              tres = TFunction [tI64, tI64] tI64
+              s = (i0 +-> tI64)
+
 testNullSubst = TestCase $
     assertEqual "{} T → T, {} i0 → i0, {} f0 → f0" tsrcs (apply nullSubst tsrcs)
         where ut = TVAny "T"
@@ -36,7 +39,6 @@ testNullSubst = TestCase $
 
 -- Subst composition
 -- TODO: unordered assertEqual?
-testSubstComp1 :: Test
 testSubstComp1 = TestCase $
     assertEqual "{T +-> MyType} @@ {i0 +-> i64} → {T +-> MyType, i0 +-> i64}" sres (s2 @@ s1)
         where s1 = ((TVAny "T") +-> (TConst "MyType"))
@@ -44,7 +46,6 @@ testSubstComp1 = TestCase $
               sres = [((TVAny "T"), (TConst "MyType")), ((TVInt 0), (TConst "i64"))]
 
 -- Free type variables
-testFtv1 :: Test
 testFtv1 = TestCase $
     assertEqual "ftv Result<Option<T>, E> → [T, E]" [ut, ue] (ftv t)
         where ut = TVAny "T"
@@ -56,6 +57,7 @@ main :: IO Counts
 main = runTestTT $ TestList [ testTypeSubst1,
                               testTypeSubst2,
                               testTypeSubst3,
+                              testTypeSubst4,
                               testNullSubst,
                               testSubstComp1,
                               testFtv1
