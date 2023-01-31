@@ -1,6 +1,6 @@
-module Subst where
+module Types.Subst where
 
-import Type (Type(..), TypeVar(..))
+import Types.Data
 import Data.List (nub)
 
 ---- Substitutions
@@ -9,9 +9,6 @@ class Apply t where
     apply :: Subst -> t -> t
     -- Free type variables
     ftv :: t -> [TypeVar]
-
--- Substitutions
-type Subst = [(TypeVar, Type)]
 
 -- Substitution construction
 nullSubst :: Subst

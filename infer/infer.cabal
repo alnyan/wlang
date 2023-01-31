@@ -25,11 +25,12 @@ source-repository head
 
 library
   exposed-modules:
-      Error
       Lib
-      Subst
-      Type
-      Unify
+      PPrint
+      Result
+      Types.Data
+      Types.Subst
+      Types.Unify
   other-modules:
       Paths_infer
   hs-source-dirs:

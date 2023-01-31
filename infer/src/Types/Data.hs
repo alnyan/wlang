@@ -1,6 +1,6 @@
-module Type where
+module Types.Data where
 
----- Types
+---- Data structure definitions
 -- Type identifier (generated from high-level types through internment process)
 type Id = String
 
@@ -22,6 +22,18 @@ data TypeVar = TVAny Id                 -- Can take any type, like `T` in `struc
              | TVFloat Int              -- Can take any *float* type, used for float literals
     deriving (Show, Eq)
 
+-- Substitutions
+type Subst = [(TypeVar, Type)]
+
+---- Errors enum
+data TypeError = UnifyError Type Type
+               | OccursCheck TypeVar Type
+               | ArgumentCountMismatch [Type] [Type]
+               | IntUnifyError TypeVar Type
+               | FloatUnifyError TypeVar Type
+    deriving (Show, Eq)
+
+---- Constants
 -- Common types
 tUnit = TConst "()"
 tI64 = TConst "i64"

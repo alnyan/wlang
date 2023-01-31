@@ -1,6 +1,4 @@
-module Error where
-
-import Type (Type(..), TypeVar(..))
+module Result where
 
 data Result e t = Ok t | Err e
     deriving (Show, Eq)
@@ -18,11 +16,3 @@ instance Monad (Result e) where
     return = pure
     Err e >>= _ = Err e
     Ok t >>= k = k t
-
----- Errors enum
-data TypeError = UnifyError Type Type
-               | OccursCheck TypeVar Type
-               | ArgumentCountMismatch [Type] [Type]
-               | IntUnifyError TypeVar Type
-               | FloatUnifyError TypeVar Type
-    deriving (Show, Eq)

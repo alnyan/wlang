@@ -1,10 +1,10 @@
 {-# LANGUAGE FlexibleInstances #-}
 
-module Unify where
+module Types.Unify where
 
-import Error
-import Subst
-import Type
+import Types.Data
+import Types.Subst
+import Result
 
 -- Unification
 class Unify t where
@@ -38,4 +38,3 @@ varBind (TVFloat n) t | not $ isCoreFloat t = Err $ FloatUnifyError (TVFloat n) 
 varBind u t | t == TVar u       = Ok nullSubst
             | u `elem` ftv t    = Err $ OccursCheck u t
             | otherwise         = Ok (u +-> t)
-

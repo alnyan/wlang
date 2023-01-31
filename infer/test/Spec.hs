@@ -1,9 +1,9 @@
 import Test.HUnit
 
-import Error
-import Unify
-import Subst
-import Type
+import Types.Unify
+import Types.Subst
+import Types.Data
+import Result
 
 -- Subst application
 testTypeSubst1 = TestCase $
