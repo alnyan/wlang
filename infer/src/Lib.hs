@@ -14,7 +14,7 @@ data TypeError = UnifyError Type Type
                | ArgumentCountMismatch [Type] [Type]
                | IntUnifyError TypeVar Type
                | FloatUnifyError TypeVar Type
-    deriving Show
+    deriving (Show, Eq)
 
 ---- Types
 -- Type identifier (generated from high-level types through internment process)
@@ -56,10 +56,12 @@ tCoreIntNames = [ "i64", "i32", "i16", "i8",
 tCoreFloatNames = [ "f32", "f64" ]
 
 isCoreInteger :: Type -> Bool
+isCoreInteger (TVar (TVInt _)) = True
 isCoreInteger (TConst tc) = tc `elem` tCoreIntNames
 isCoreInteger _ = False
 
 isCoreFloat :: Type -> Bool
+isCoreFloat (TVar (TVFloat _)) = True
 isCoreFloat (TConst tc) = tc `elem` tCoreFloatNames
 isCoreFloat _ = False
 
@@ -124,6 +126,7 @@ instance Unify Type where
                                                            s2 <- mgu (apply s1 ts) (apply s1 ts')
                                                            return (s2 @@ s1)
     mgu (TPointer t) (TPointer t') = mgu t t'
+    mgu (TArray t _) (TArray t' _) = mgu t t'
     mgu (TConst tc1) (TConst tc2) | tc1 == tc2 = Right nullSubst
     mgu (TVar u) t = varBind u t
     mgu t (TVar u) = varBind u t
