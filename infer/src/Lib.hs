@@ -1,6 +1,12 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 module Lib where
 
-import Data.List (nub)
+import Data.List (nub, intercalate)
+
+---- Pretty printing helper
+class PrettyPrint a where
+    pprint :: a -> String
 
 ---- Errors
 data TypeError = UnifyError Type Type
@@ -25,12 +31,12 @@ data Type = TVar TypeVar                -- e.g. `{integer #n}`, `{float #m}`, `T
           | TArray Type Int             -- e.g. `[T; 1024]`
           | TPointer Type               -- e.g. `*T`
           | TFunction [Type] Type       -- e.g. `fn(T, U, V, ...) -> R`
-    deriving (Eq, Show)
+    deriving (Show, Eq)
 
 data TypeVar = TVAny Id                 -- Can take any type, like `T` in `struct X<T>`
              | TVInt Int                -- Can take any *integer* type, used for integer literals
              | TVFloat Int              -- Can take any *float* type, used for float literals
-    deriving (Eq, Show)
+    deriving (Show, Eq)
 
 -- Common types
 tUnit = TConst "()"
@@ -137,3 +143,20 @@ varBind (TVFloat n) t | not $ isCoreFloat t = Left $ FloatUnifyError (TVFloat n)
 varBind u t | t == TVar u       = Right nullSubst
             | u `elem` ftv t    = Left $ OccursCheck u t
             | otherwise         = Right (u +-> t)
+
+-- Implement pretty-printing for types
+instance PrettyPrint TypeVar where
+    pprint (TVAny u) = u
+    pprint (TVInt n) = "{integer #" ++ (show n) ++ "}"
+    pprint (TVFloat n) = "{float #" ++ (show n) ++ "}"
+
+instance PrettyPrint a => PrettyPrint [a] where
+    pprint = intercalate ", " . map pprint
+
+instance PrettyPrint Type where
+    pprint (TFunction ts t) = "fn (" ++ (pprint ts) ++ ") -> " ++ pprint t
+    pprint (TParameterized t ts) = pprint t ++ "<" ++ (pprint ts) ++ ">"
+    pprint (TArray t n) = "[" ++ pprint t ++ "; " ++ (show n) ++ "]"
+    pprint (TPointer t) = pprint t
+    pprint (TConst tc) = tc
+    pprint (TVar u) = pprint u
