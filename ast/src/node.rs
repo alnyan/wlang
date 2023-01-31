@@ -62,5 +62,5 @@ pub enum Node {
         ty: Rc<Node>,
         value: Rc<Node>,
     },
-    Item(Rc<ItemNode>)
+    Item(Rc<ItemNode>),
 }

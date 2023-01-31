@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use ast::{
-    node::{TypeNode, ItemNode},
+    node::{ItemNode, TypeNode},
     token::{BasicOperator, Keyword, Punctuation, TokenValue},
     Node,
 };

@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use ast::{Node, ItemNode};
+use ast::{ItemNode, Node};
 
 use crate::{
     CompilerError, FunctionImplementation, FunctionSignature, GlobalValue, LangFunction,
