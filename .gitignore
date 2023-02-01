@@ -2,3 +2,6 @@
 test.li
 /infer/.stack-work/
 /infer/*~
+/doc/*.log
+/doc/*.pdf
+/doc/*.aux

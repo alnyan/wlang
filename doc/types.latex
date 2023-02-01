@@ -1,0 +1,116 @@
+\documentclass[proof]{article}
+\usepackage{amsmath}
+\usepackage{color}
+\usepackage{proof}
+\usepackage{listings}
+\usepackage{xparse}
+\title{\textit{language-name} inference rules}
+\date{2023-02-01}
+\begin{document}
+    \maketitle
+    \pagenumbering{gobble}
+    \newpage
+
+    \pagenumbering{arabic}
+
+    \section{TODOs}
+    \begin{enumerate}
+        \item Reference types (\verb|&T|, probably represented by \verb|Ref<'a, T>| in inferencer terms)
+        \item Lifetimes
+        \item Proper term list for type-inferencer input AST (missing features from High-level AST)
+        \item High-level AST $\rightarrow$ type-inferencer terms
+    \end{enumerate}
+    \newpage
+
+    \section{Types}
+    \textbf{NOTE}: work in progress.
+        Data types are described by the following set:
+        \begin{flalign*}
+            T & := Var                                      &&& \text{type variables} \\
+              & Id                                          &&& \text{type constants} \\
+              & fn (T_{1}, ..., T_{n}) \rightarrow T        &&& \text{functions} \\
+              & [T; n]                                      &&& \text{n-size array of T} \\
+              & T<T_{1}, ..., T_{n}>                        &&& \text{parameterized type} \\
+        \end{flalign*}
+
+        Type variables are classified into three categories:
+        \begin{flalign*}
+            Var & := u                                      &&& \text{generic type variable} \\
+                & i_{n}                                     &&& \text{integer type variable} \\
+                & f_{n}                                     &&& \text{float type variable}
+        \end{flalign*}
+
+        Integer and float types:
+        \begin{flalign*}
+            IntType & := i_{n} | \text{i64} | \text{i32} | \text{i16} | \text{i8} | \text{isize}
+            &&&
+            FloatType := f_{n} | \text{f32} | \text{f64} \\
+                    & | \text{u64} | \text{u32} | \text{u16} | \text{u8} | \text{usize}
+        \end{flalign*}
+    \section{Terms}
+        \textbf{TODO}: this list is incomplete
+        \begin{flalign*}
+            Atom & := \text{IntegerLiteral}                 &&& \text{1234} \\
+                 & \text{FloatLiteral}                      &&& \text{1234.2, 1.3e7} \\
+                 & \text{Identifier}                        &&& \text{x} \\
+                 & \text{StringLiteral}                     &&& \text{"abcdef"} \\
+                 & \text{\textbf{true}} \\
+                 & \text{\textbf{false}}
+            \\
+            Expr & := \text{\textbf{if} Expr \{ Expr \} else \{ Expr \}}
+                        &&& \text{if true \{ 1 \} else \{ 2 \}} \\
+                 & \text{[Expr; Expr]}
+                        &&& \text{[val; 1024]} \\
+                 & \text{[Expr, ..., Expr]}
+                        &&& \text{[1, 2, 3, 4]} \\
+                 & \text{Expr(Expr, ..., Expr...)}
+                        &&& \text{f(1, 2, 3)} \\
+                 & \text{Expr \textbf{as} Type}
+                        &&& \text{true as i32} \\
+                 & \text{Atom} \\
+            \\
+            Stmt & := \text{Expr}; \\
+                 & \text{\textbf{let } Identifier = Expr;}
+                 &&& \text{let x = 1234;} \\
+                 & \text{\textbf{let } Identifier: Type = Expr;}
+                 &&& \text{let x: i32 = 1234;} \\
+                 & \text{\textbf{return } Expr;}
+                 &&& \text{return 1;} \\
+                 & \text{\textbf{if} Expr \{ Expr \}}
+                 &&& \text{if true \{ ... \}} \\
+            Type & := \text{Identifier}
+                        &&& \text{T, MyType} \\
+                 & \text{Type\textless Type, ..., Type\textgreater}
+                        &&& \text{T\textless U, V\textgreater, Result\textless T, E\textgreater} \\
+                 & \text{[Type; Expr]}
+                        &&& \text{[T; n], [i32; 1024]} \\
+            Item & := \text{\textbf{fn} } (a_{1}: T_{1}, ..., a_{n}: T_{n}) \rightarrow \text{Type Block} \\
+                 & \text{\textbf{static} } NAME: Type = Expr; \\
+                 & \text{\textbf{extern fn} } name(T_{1}, ..., T_{n}) \rightarrow \text{Type;} \\
+            Block & := \text{\{\}} \\
+                  &    \text{\{} Stmt_{1}; ... Stmt_{n}; Expr \text{\}}
+        \end{flalign*}
+
+        Unary/binary expressions like !x, *x, x + y etc. get translated into their function form:
+        !(x), *(x), +(x, y)
+
+    \section{Basic typing rules}
+        Literals:
+        \begin{flalign*}
+            \infer{\Gamma \vdash 1234 : i_{n}}{} &&& \text{(T-IntLiteral)} &&&
+            \infer{\Gamma \vdash 1234.123 : f_{n}}{} &&& \text{(T-FloatLiteral)} \\
+            \\
+            \infer{\Gamma \vdash true : bool}{} &&& \text{(T-True)} &&&
+            \infer{\Gamma \vdash false : bool}{} &&& \text{(T-False)} \\
+            \\
+            \infer{\Gamma \vdash "abcdef" : \lstinline{Pointer<i8>}}{}
+        \end{flalign*}
+
+        Functions:
+        \begin{flalign*}
+            \infer{\Gamma \vdash f(a_{1}, ..., a_{n}) : R}
+                  {\Gamma \vdash a_{1} : T_{1} & ... & a_{n} : T_{n} &
+                                 f : \lstinline{fn}(T_{1}, ..., T_{n}) \rightarrow R}
+            &&& \text{(T-Call)}
+        \end{flalign*}
+\end{document}
