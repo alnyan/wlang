@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE GADTs #-}
 
 -- That whole module is just an attempt at imlementing a simple bidirectional type checking

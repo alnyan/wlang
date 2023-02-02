@@ -12,14 +12,11 @@ data Expr = EIntLiteral Int
           | ECall Expr [Expr]
           | EArray [Expr]
           | EAs Expr Type
-          | EIf Expr Block Block
-          | EBlock Block
-data Stmt = SExpr Expr
-          | SLet String (Maybe Type) Expr
-          | SReturn Expr
-          | SIf Expr Block
-data Block = Block [Stmt] (Maybe Expr)
-data Item = IFunction String Scheme Block
+          | EIf Expr Expr (Maybe Expr)
+          | EBlock [Expr]
+          | ELet String (Maybe Type) Expr
+          | EReturn Expr
+data Item = IFunction String Scheme Expr
           | IExternFunction String Scheme
 newtype Program = Program [Item]
 
@@ -62,6 +59,8 @@ data TypeError = UnifyError Type Type
                | FloatUnifyError TypeVar Type
                | MatchError Type Type
                | MergeError Subst Subst
+               | UndefinedVariable String
+               | UndefinedFunction String
     deriving (Show, Eq)
 
 ---- Constants

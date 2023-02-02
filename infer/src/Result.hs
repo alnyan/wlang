@@ -16,3 +16,10 @@ instance Monad (Result e) where
     return = pure
     Err e >>= _ = Err e
     Ok t >>= k = k t
+
+class IntoResult m where
+    okOr :: m t -> e -> Result e t
+
+instance IntoResult Maybe where
+    okOr (Just a) _ = Ok a
+    okOr Nothing e = Err e

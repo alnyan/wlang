@@ -5,17 +5,23 @@ import Types.Data
 import Result
 import Control.Monad (foldM)
 import Types.Subst
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, catMaybes)
+import Utils (mapPair)
 
-mapPair :: (a -> b, c -> d) -> (a, c) -> (b, d)
-mapPair (f, g) (x, y) = (f x, g y)
+data TaggedExprValue = TEIdent String
+                     | TECall TaggedExpr [TaggedExpr]
+                     | TEBlock [TaggedExpr]
+                     | TELet String TaggedExpr
+                     | TEIntLiteral Int
+    deriving (Show)
+
+type TaggedExpr = (Type, TaggedExprValue)
+data TaggedItem = TIFunction Scheme TaggedExpr
+    deriving Show
+type TaggedProgram = [TaggedItem]
 
 class Instantiate t where
     instantiate :: InferenceContext -> t -> (InferenceContext, t)
-
-instance Instantiate Type where
-    instantiate ic (TVar u) = undefined
-    instantiate _ t = error $ show t
 
 instance Instantiate Scheme where
     instantiate = loop []
@@ -24,12 +30,11 @@ instance Instantiate Scheme where
                                                    loop (u':us') ic' (Scheme us (apply (u +-> TVar u') qt))
 
 -- TODO traits
-data TypeContext = TypeContext { functions :: [(String, Scheme)],
-                                 constraints :: [Constraint] }
+data TypeContext = TypeContext { functions :: [(String, Scheme)] }
     deriving Show
 
 emptyTypeContext :: TypeContext
-emptyTypeContext = TypeContext { functions = [], constraints = [] }
+emptyTypeContext = TypeContext { functions = [] }
 
 addFunctionScheme :: TypeContext -> String -> Scheme -> Result TypeError TypeContext
 addFunctionScheme tc name scheme | isJust (lookup name fs) = undefined
@@ -37,21 +42,21 @@ addFunctionScheme tc name scheme | isJust (lookup name fs) = undefined
                                 where fs = functions tc
 
 getFunctionScheme :: TypeContext -> String -> Result TypeError Scheme
-getFunctionScheme tc name = case lookup name (functions tc) of
-                                Just s -> Ok s
-                                Nothing -> undefined
+getFunctionScheme tc name = okOr f $ UndefinedFunction name
+    where f = lookup name (functions tc)
 
--- TODO anonymous type variables
 data InferenceContext = InferenceContext { tcx :: TypeContext,
                                            vars :: [(String, Type)],
                                            lastVarId :: Int,
                                            lastIntId :: Int,
+                                           lastFloatId :: Int,
                                            cs :: [Constraint] }
     deriving Show
 
 emptyInferContext tc = InferenceContext { tcx = tc,
                                           lastVarId = 0,
                                           lastIntId = 0,
+                                          lastFloatId = 0,
                                           cs = [],
                                           vars = [] }
 
@@ -64,13 +69,16 @@ findFunction :: InferenceContext -> String -> Result TypeError Scheme
 findFunction ic = getFunctionScheme (tcx ic)
 
 findVariable :: InferenceContext -> String -> Result TypeError Type
-findVariable ic name = case lookup name (vars ic) of
-                         Just s -> Ok s
-                         Nothing -> undefined
+findVariable ic name = okOr v $ UndefinedVariable name
+    where v = lookup name (vars ic)
 
 allocIntVar :: InferenceContext -> (InferenceContext, TypeVar)
 allocIntVar ic = (ic { lastIntId = vi }, TVInt vi)
     where vi = lastIntId ic + 1
+
+allocFloatVar :: InferenceContext -> (InferenceContext, TypeVar)
+allocFloatVar ic = (ic { lastFloatId = vi }, TVFloat vi)
+    where vi = lastFloatId ic + 1
 
 allocVar :: InferenceContext -> (InferenceContext, TypeVar)
 allocVar ic = (ic { lastVarId = vi }, TVAny ("v" ++ show vi))
@@ -79,53 +87,54 @@ allocVar ic = (ic { lastVarId = vi }, TVAny ("v" ++ show vi))
 freshenVar :: InferenceContext -> TypeVar -> (InferenceContext, TypeVar)
 freshenVar ic (TVAny _) = allocVar ic
 freshenVar ic (TVInt _) = allocIntVar ic
+freshenVar ic (TVFloat _) = allocFloatVar ic
 
-inferList :: InferenceContext -> [Expr] -> Result TypeError (InferenceContext, [Type])
-inferList = loop []
-    where loop ts ic [] = Ok (ic, ts)
-          loop ts ic (x:xs) = do (ic', t) <- inferExpr ic x
-                                 loop (ts ++ [t]) ic' xs
+foldCtx :: (c -> t -> Result e (c, u)) -> c -> [t] -> Result e (c, [u])
+foldCtx = loop []
+    where loop ys _ tc [] = Ok (tc, ys)
+          loop ys f tc (x:xs) = do (tc', y) <- f tc x
+                                   loop (y:ys) f tc' xs
 
-inferExpr :: InferenceContext -> Expr -> Result TypeError (InferenceContext, Type)
-inferExpr ic (EIntLiteral _) = Ok $ mapPair (id, TVar) $ allocIntVar ic
+-- Inference
+inferExpr :: InferenceContext -> Expr -> Result TypeError (InferenceContext, TaggedExpr)
+inferExpr ic (EBlock []) = Ok (ic, (tUnit, TEBlock []))
+inferExpr ic (EBlock xs) = do let (xs', x) = (init xs, last xs)
+                              (ic', xs'') <- foldCtx inferExpr ic xs'
+                              -- TODO equate xs'' types to tUnit
+                              (ic'', (t, x')) <- inferExpr ic' x
+                              let txs = TEBlock $ (t, x'):xs''
+                              pure (ic'', (t, txs))
+inferExpr ic (EIntLiteral val) = let (ic', u) = allocIntVar ic in
+                                     Ok (ic', (TVar u, TEIntLiteral val))
 inferExpr ic (ECall (EIdent name) xs) = do fsch <- findFunction ic name
-                                           -- Instantiate function scheme with fresh vars
+                                           -- Instantiate a fresh call scheme fsch
                                            let (ic', fsch') = instantiate ic fsch
-                                           (ic'', xs') <- inferList ic' xs
                                            -- Alloc type var for return
-                                           let (ic''', t) = mapPair (id, TVar) $ allocVar ic''
-                                           -- Convert call into scheme
-                                           let asch = Scheme [] $ [] :=> TFunction xs' t
-                                           -- TODO relate schemes
-                                           error $ pprint asch ++ " `relate` " ++ pprint fsch'
-inferExpr ic (EIdent name) = do ty <- findVariable ic name
-                                pure (ic, ty)
-inferExpr _ _ = undefined
+                                           let (ic'', t) = mapPair (id, TVar) $ allocVar ic'
+                                           -- Infer call types, create a schema for them
+                                           (ic''', xs') <- foldCtx inferExpr ic'' xs
+                                           -- TODO make a schema from xs' types, equate xsch and fsch'
+                                           -- TODO return type is t
+                                           undefined
+inferExpr _ x = error $ "TODO: infer expr: " ++ pprint x
 
-inferStmt :: InferenceContext -> Stmt -> Result TypeError InferenceContext
-inferStmt ic (SLet name Nothing val) = do (ic', valTy) <- inferExpr ic val
-                                          addVariable ic' name valTy
-inferStmt _ _ = undefined
-
-inferBlock :: InferenceContext -> Block -> Result TypeError (InferenceContext, Type)
-inferBlock ic (Block ss (Just e)) = do ic' <- foldM inferStmt ic ss
-                                       inferExpr ic' e
-inferBlock _ _ = undefined
-
-inferItem :: TypeContext -> Item -> Result TypeError TypeContext
-inferItem tc (IFunction name scheme body) = do (ic', resTy) <- inferBlock ic body
-                                               undefined
-    where ic = emptyInferContext tc
-inferItem tc (IExternFunction _ _) = Ok tc
+--- Top-level stuff
+checkItem :: TypeContext -> Item -> Result TypeError (TypeContext, Maybe TaggedItem)
+checkItem tc (IExternFunction _ _) = Ok (tc, Nothing)
+-- TODO use function's scheme and arguments to introduce local types/variables
+checkItem tc (IFunction _ (Scheme _ (_ :=> TFunction _ fty)) body) = do (_, _) <- inferExpr (emptyInferContext tc) body
+                                                                        -- TODO equate fty qt
+                                                                        undefined
+checkItem _ _ = undefined
 
 extractItem :: TypeContext -> Item -> Result TypeError TypeContext
-extractItem tc (IFunction name scheme _) = addFunctionScheme tc name scheme
-extractItem tc (IExternFunction name scheme) = addFunctionScheme tc name scheme
+extractItem tc (IFunction name sch _) = addFunctionScheme tc name sch
+extractItem tc (IExternFunction name sch) = addFunctionScheme tc name sch
 
-inferProgram :: TypeContext -> Program -> Result TypeError TypeContext
-inferProgram tc (Program ps) = do tc' <- foldM extractItem tc ps    -- Step 1. Extract stuff like functions
-                                  foldM inferItem tc' ps            -- Step 2. Infer everything using that info
-
+checkProgram :: TypeContext -> Program -> Result TypeError (TypeContext, TaggedProgram)
+checkProgram tc (Program is) = do tc' <- foldM extractItem tc is
+                                  (tc'', is') <- foldCtx checkItem tc' is
+                                  pure (tc'', catMaybes is')
 
 -- Test program:
 -- extern fn<T: PartialEq> f1(x: T, y: T) -> T;
@@ -141,12 +150,12 @@ dPartialEq = TConst "PartialEq"
 dExternFn1 = IExternFunction "f1" $ Scheme [dT1]
     ([TVar dT1 <: dPartialEq] :=> TFunction [TVar dT1, TVar dT1] (TVar dT1))
 
-dLetX = SLet "x" Nothing (EIntLiteral 1234)
-dLetY = SLet "y" Nothing (EIntLiteral 4321)
+dLetX = ELet "x" Nothing (EIntLiteral 1234)
+dLetY = ELet "y" Nothing (EIntLiteral 4321)
 dCallF1 = ECall (EIdent "f1") [EIdent "x", EIdent "y"]
-dLetZ = SLet "z" Nothing dCallF1
+dLetZ = ELet "z" Nothing dCallF1
 dZ = EIdent "z"
-dMainBlock = Block [ dLetX, dLetY, dLetZ ] (Just dZ)
-dFnMain = IFunction "main" (Scheme [] ([] :=> TFunction [] tI64)) dMainBlock
+-- dMainBlock = Block [ dLetX, dLetY, dLetZ ] (Just dZ)
+dFnMain = IFunction "main" (Scheme [] ([] :=> TFunction [] tI64)) $ EBlock [dLetX, dLetY, dLetZ, dZ]
 
 dProgram1 = Program [ dExternFn1, dFnMain ]
