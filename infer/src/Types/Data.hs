@@ -4,6 +4,25 @@ module Types.Data where
 -- Type identifier (generated from high-level types through internment process)
 type Id = String
 
+-- Expressions
+data Expr = EIntLiteral Int
+          | EFloatLiteral Float
+          | EIdent String
+          | EBoolLiteral Bool
+          | ECall Expr [Expr]
+          | EArray [Expr]
+          | EAs Expr Type
+          | EIf Expr Block Block
+          | EBlock Block
+data Stmt = SExpr Expr
+          | SLet String (Maybe Type) Expr
+          | SReturn Expr
+          | SIf Expr Block
+data Block = Block [Stmt] (Maybe Expr)
+data Item = IFunction String Scheme Block
+          | IExternFunction String Scheme
+newtype Program = Program [Item]
+
 -- Types
 -- TODO: struct/enum types
 -- TODO: references
@@ -24,6 +43,16 @@ data TypeVar = TVAny Id                 -- Can take any type, like `T` in `struc
 
 -- Substitutions
 type Subst = [(TypeVar, Type)]
+
+-- Constraints
+data Constraint = Implements Type Type
+    deriving (Show, Eq)
+
+data Qualified t = [Constraint] :=> t
+    deriving Show
+
+data Scheme = Scheme [TypeVar] (Qualified Type)
+    deriving Show
 
 ---- Errors enum
 data TypeError = UnifyError Type Type
@@ -63,3 +92,6 @@ isCoreFloat (TVar (TVFloat _)) = True
 isCoreFloat (TConst tc) = tc `elem` tCoreFloatNames
 isCoreFloat _ = False
 
+infixr 4 <:
+(<:) :: Type -> Type -> Constraint
+t1 <: t2 = Implements t1 t2

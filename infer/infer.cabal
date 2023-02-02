@@ -29,6 +29,7 @@ library
       PPrint
       Result
       Types.Data
+      Types.Infer
       Types.Subst
       Types.Unify
       Utils
