@@ -36,23 +36,29 @@ instance Apply Type where
                         Just t -> t
                         Nothing -> TVar u
     -- For any nested types, like TParameterized, apply subst to all branches
-    apply s (TParameterized t gs) = (TParameterized (apply s t) (apply s gs))
-    apply s (TArray t n) = (TArray (apply s t) n)
-    apply s (TPointer t) = (TPointer (apply s t))
-    apply s (TFunction ts t) = (TFunction (apply s ts) (apply s t))
+    apply s (TParameterized t gs) = TParameterized (apply s t) (apply s gs)
+    apply s (TArray t n) = TArray (apply s t) n
+    apply s (TPointer t) = TPointer (apply s t)
+    apply s (TFunction ts t) = TFunction (apply s ts) (apply s t)
     -- Otherwise, just return the value
-    apply _ (TConst t) = (TConst t)
+    apply _ (TConst t) = TConst t
 
     ftv (TVar u) = [u]
-    ftv (TParameterized t gs) = (nub . concat) [(ftv t), (ftv gs)]
+    ftv (TParameterized t gs) = nub (ftv t ++ ftv gs)
     ftv (TArray t _) = ftv t
     ftv (TPointer t) = ftv t
-    ftv (TFunction ts t) = (nub . concat) [(ftv ts), (ftv t)]
+    ftv (TFunction ts t) = nub (ftv ts ++ ftv t)
     ftv (TConst _) = []
 
 -- Auto-impl Apply for [T: Apply]
 instance Apply a => Apply [a] where
     apply s = map (apply s)
-    ftv = nub . concat . map ftv
+    ftv = nub . concatMap ftv
 
+instance Apply Constraint where
+    apply s (Implements t r) = Implements (apply s t) r
+    ftv (Implements t r) = nub (ftv t ++ ftv r)
 
+instance Apply a => Apply (Qualified a) where
+    apply s (ps :=> t) = apply s ps :=> apply s t
+    ftv (ps :=> t) = nub (ftv t ++ concatMap ftv ps)

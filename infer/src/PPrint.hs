@@ -58,3 +58,6 @@ instance PrettyPrint Item where
 
 instance PrettyPrint Program where
     pprint (Program is) = (intercalate "\n" . map pprint) is ++ "\n"
+
+instance PrettyPrint (TypeVar, Type) where
+    pprint (u, t) = pprint u ++ " +-> " ++ pprint t
