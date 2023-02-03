@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.35.0.
+-- This file has been generated from package.yaml by hpack version 0.35.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -41,6 +41,7 @@ library
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-missing-signatures
   build-depends:
       base >=4.7 && <5
+    , mtl
   default-language: Haskell2010
 
 executable infer-exe
@@ -53,6 +54,7 @@ executable infer-exe
   build-depends:
       base >=4.7 && <5
     , infer
+    , mtl
   default-language: Haskell2010
 
 test-suite infer-test
@@ -67,4 +69,5 @@ test-suite infer-test
       HUnit >=1.6.2
     , base >=4.7 && <5
     , infer
+    , mtl
   default-language: Haskell2010
