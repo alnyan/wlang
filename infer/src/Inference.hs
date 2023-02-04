@@ -32,19 +32,20 @@ data Expression
 
 type Context = [(Variable, Type)]
 
-data TypeError
-    = TypeError String
-    | RetardError String
+newtype TypeError = TypeError String
     deriving (Show, Eq, Ord)
 
 type Inference a = Either TypeError a
 
+-- There are introductions, eliminations and stuff like variables.
+-- The principal judgement of introductions is usually the checking.
+-- The principal judgment of eliminations is always the synthesis.
+
 synthesizeType :: Context -> Expression -> Inference Type
 synthesizeType c e = case e of
-    EUnit -> pure TUnit
     EVariable v -> case lookup v c of
         Just t -> pure t
-        Nothing -> throwError (TypeError "Variable type is unknown")
+        Nothing -> throwError (TypeError $ "unbound variable: " <> show v)
     EAnnotation e2 t -> do
         checkType c e2 t
         pure t
@@ -55,19 +56,28 @@ synthesizeType c e = case e of
             _ -> throwError (TypeError "not a function")
         checkType c e3 t1
         pure t2
-    EFunction _ _ -> throwError (RetardError "function expressions must be checked")
 
 checkType :: Context -> Expression -> Type -> Inference ()
 checkType c e t = case e of
     EFunction v e2 -> case t of
         t1 :-> t2 -> checkType ((v, t1) : c) e2 t2
-        _ -> throwError (TypeError "a function found")
-    EUnit -> unless (t == TUnit) (throwError (TypeError "a unit found"))
+        _ -> typingError e ("a function found, but " <> show t <> " expected")
+    EUnit -> unless (t == TUnit) (typingError e ("a unit found, but " <> show t <> " expected"))
     EVariable v -> case lookup v c of
-        Just t1 -> unless (t == t1) (throwError (TypeError "type error"))
-        Nothing -> throwError (TypeError "unbound variable")
-    EAnnotation _ _ -> throwError (RetardError "annotation types must be synthesized")
-    EApplication _ _ -> throwError (RetardError "application types must be synthesized")
+        Just t1 -> unless (t == t1) (typingError e ("a " <> show t1 <> " found, but " <> show t <> " expected"))
+        Nothing -> throwError (TypeError $ "unbound variable: " <> show v)
+    _ -> do
+        t1 <- synthesizeType c e
+        unless
+            (t1 <: t)
+            (typingError e ("subsumption failed; expected " <> show t <> "; got " <> show t1))
+
+typingError :: (MonadError TypeError m, Show a) => a -> String -> m ()
+typingError e msg = throwError (TypeError $ "error in: " <> show e <> "; " <> msg)
+
+-- | Subsumption check.
+(<:) :: Type -> Type -> Bool
+t1 <: t2 = t1 == t2
 
 λ = EFunction
 rv = EVariable . Variable
@@ -75,5 +85,5 @@ nv = Variable
 u = EUnit
 (?) = EAnnotation
 
--- >>> checkType [] (λ (nv "x") (rv "x")) (TUnit :-> TUnit)
--- Right ()
+-- >>> synthesizeType [] ((λ (nv "x") (λ (nv "y") (rv "y"))) ? (TUnit :-> TUnit))
+-- Left (TypeError "error in: EFunction (Variable \"y\") (EVariable (Variable \"y\")); a function found, but TUnit expected")
