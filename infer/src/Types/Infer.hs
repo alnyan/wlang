@@ -48,15 +48,11 @@ getFunctionScheme tc name = okOr f $ UndefinedFunction name
 data InferenceContext = InferenceContext { tcx :: TypeContext,
                                            vars :: [(String, Type)],
                                            lastVarId :: Int,
-                                           lastIntId :: Int,
-                                           lastFloatId :: Int,
                                            cs :: [Constraint] }
     deriving Show
 
 emptyInferContext tc = InferenceContext { tcx = tc,
                                           lastVarId = 0,
-                                          lastIntId = 0,
-                                          lastFloatId = 0,
                                           cs = [],
                                           vars = [] }
 
@@ -72,22 +68,12 @@ findVariable :: InferenceContext -> String -> Result TypeError Type
 findVariable ic name = okOr v $ UndefinedVariable name
     where v = lookup name (vars ic)
 
-allocIntVar :: InferenceContext -> (InferenceContext, TypeVar)
-allocIntVar ic = (ic { lastIntId = vi }, TVInt vi)
-    where vi = lastIntId ic + 1
-
-allocFloatVar :: InferenceContext -> (InferenceContext, TypeVar)
-allocFloatVar ic = (ic { lastFloatId = vi }, TVFloat vi)
-    where vi = lastFloatId ic + 1
-
 allocVar :: InferenceContext -> (InferenceContext, TypeVar)
-allocVar ic = (ic { lastVarId = vi }, TVAny ("v" ++ show vi))
+allocVar ic = (ic { lastVarId = vi }, "v" ++ show vi)
     where vi = lastVarId ic + 1
 
 freshenVar :: InferenceContext -> TypeVar -> (InferenceContext, TypeVar)
-freshenVar ic (TVAny _) = allocVar ic
-freshenVar ic (TVInt _) = allocIntVar ic
-freshenVar ic (TVFloat _) = allocFloatVar ic
+freshenVar = undefined
 
 foldCtx :: (c -> t -> Result e (c, u)) -> c -> [t] -> Result e (c, [u])
 foldCtx = loop []
@@ -104,7 +90,8 @@ inferExpr ic (EBlock xs) = do let (xs', x) = (init xs, last xs)
                               (ic'', (t, x')) <- inferExpr ic' x
                               let txs = TEBlock $ (t, x'):xs''
                               pure (ic'', (t, txs))
-inferExpr ic (EIntLiteral val) = let (ic', u) = allocIntVar ic in
+inferExpr ic (EIntLiteral val) = let (ic', u) = allocVar ic in
+                                     error "TODO: constrain int literal type vars"
                                      Ok (ic', (TVar u, TEIntLiteral val))
 inferExpr ic (ECall (EIdent name) xs) = do fsch <- findFunction ic name
                                            -- Instantiate a fresh call scheme fsch
@@ -145,10 +132,9 @@ checkProgram tc (Program is) = do tc' <- foldM extractItem tc is
 --   let z = f1(x, y);
 --   z
 -- }
-dT1 = TVAny "T"
 dPartialEq = TConst "PartialEq"
-dExternFn1 = IExternFunction "f1" $ Scheme [dT1]
-    ([TVar dT1 <: dPartialEq] :=> TFunction [TVar dT1, TVar dT1] (TVar dT1))
+dExternFn1 = IExternFunction "f1" $ Scheme ["T"]
+    ([TVar "T" <: dPartialEq] :=> TFunction [TVar "T", TVar "T"] (TVar "T"))
 
 dLetX = ELet "x" Nothing (EIntLiteral 1234)
 dLetY = ELet "y" Nothing (EIntLiteral 4321)

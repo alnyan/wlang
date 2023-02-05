@@ -33,10 +33,7 @@ data Type = TVar TypeVar                -- e.g. `{integer #n}`, `{float #m}`, `T
           | TFunction [Type] Type       -- e.g. `fn(T, U, V, ...) -> R`
     deriving (Show, Eq)
 
-data TypeVar = TVAny Id                 -- Can take any type, like `T` in `struct X<T>`
-             | TVInt Int                -- Can take any *integer* type, used for integer literals
-             | TVFloat Int              -- Can take any *float* type, used for float literals
-    deriving (Show, Eq)
+type TypeVar = Id;
 
 -- Substitutions
 type Subst = [(TypeVar, Type)]
@@ -82,12 +79,10 @@ tCoreIntNames = [ "i64", "i32", "i16", "i8",
 tCoreFloatNames = [ "f32", "f64" ]
 
 isCoreInteger :: Type -> Bool
-isCoreInteger (TVar (TVInt _)) = True
 isCoreInteger (TConst tc) = tc `elem` tCoreIntNames
 isCoreInteger _ = False
 
 isCoreFloat :: Type -> Bool
-isCoreFloat (TVar (TVFloat _)) = True
 isCoreFloat (TConst tc) = tc `elem` tCoreFloatNames
 isCoreFloat _ = False
 

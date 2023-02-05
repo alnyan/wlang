@@ -52,8 +52,6 @@ instance Unify [Type] where
                                                loop (s' @@ s) ts
 
 varBind :: TypeVar -> Type -> Result TypeError Subst
-varBind (TVInt n) t | not $ isCoreInteger t = Err $ IntUnifyError (TVInt n) t
-varBind (TVFloat n) t | not $ isCoreFloat t = Err $ FloatUnifyError (TVFloat n) t
 varBind u t | t == TVar u       = Ok nullSubst
             | u `elem` ftv t    = Err $ OccursCheck u t
             | otherwise         = Ok (u +-> t)

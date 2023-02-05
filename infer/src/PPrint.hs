@@ -10,19 +10,10 @@ class PrettyPrint a where
     pprint :: a -> String
 
 -- Implement pretty-printing for types
-instance PrettyPrint TypeVar where
-    pprint (TVAny u) = u
-    pprint (TVInt n) = "{integer #" ++ show n ++ "}"
-    pprint (TVFloat n) = "{float #" ++ show n ++ "}"
-
-
 pprintDelimited :: PrettyPrint a => String -> [a] -> String
 pprintDelimited s = intercalate s . map pprint
 pprintCommad :: PrettyPrint a => [a] -> String
 pprintCommad = pprintDelimited ", "
-
--- instance PrettyPrint a => PrettyPrint [a] where
---     pprint = intercalate ", " . map pprint
 
 instance PrettyPrint Type where
     pprint (TFunction ts t) = "fn (" ++ pprintCommad ts ++ ") -> " ++ pprint t
@@ -30,14 +21,14 @@ instance PrettyPrint Type where
     pprint (TArray t n) = "[" ++ pprint t ++ "; " ++ show n ++ "]"
     pprint (TPointer t) = pprint t
     pprint (TConst tc) = tc
-    pprint (TVar u) = pprint u
+    pprint (TVar u) = u
 
 instance PrettyPrint Constraint where
     pprint (Implements t u) = pprint t ++ ": " ++ pprint u
 
 instance PrettyPrint Scheme where
     pprint (Scheme [] qt) = pprint qt
-    pprint (Scheme us qt) = "for<" ++ pprintCommad us ++ "> " ++ pprint (Scheme [] qt)
+    pprint (Scheme us qt) = "for<" ++ intercalate ", " us ++ "> " ++ pprint (Scheme [] qt)
 
 instance PrettyPrint t => PrettyPrint (Qualified t) where
     pprint ([] :=> t) = pprint t
@@ -61,4 +52,4 @@ instance PrettyPrint Program where
     pprint (Program is) = pprintDelimited "\n" is ++ "\n"
 
 instance PrettyPrint (TypeVar, Type) where
-    pprint (u, t) = pprint u ++ " +-> " ++ pprint t
+    pprint (u, t) = u ++ " +-> " ++ pprint t
