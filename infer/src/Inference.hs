@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 -- That whole module is just an attempt at imlementing a simple bidirectional type checking
 -- It would have to be updated to reuse all the ast/type information from the rest of the project

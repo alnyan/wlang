@@ -5,33 +5,49 @@ module Types.Data where
 type Id = String
 
 -- Expressions
-data Expr = EIntLiteral Int
-          | EFloatLiteral Float
-          | EIdent String
-          | EBoolLiteral Bool
-          | ECall Expr [Expr]
-          | EArray [Expr]
-          | EAs Expr Type
-          | EIf Expr Expr (Maybe Expr)
-          | EBlock [Expr]
-          | ELet String (Maybe Type) Expr
-          | EReturn Expr
-data Item = IFunction String Scheme Expr
-          | IExternFunction String Scheme
-newtype Program = Program [Item]
+-- data Expr = EIntLiteral Int
+--           | EFloatLiteral Float
+--           | EIdent String
+--           | EBoolLiteral Bool
+--           | ECall Expr [Expr]
+--           | EArray [Expr]
+--           | EAs Expr Type
+--           | EIf Expr Expr (Maybe Expr)
+--           | EBlock [Expr]
+--           | ELet String (Maybe Type) Expr
+--           | EReturn Expr
+-- data Item = IFunction String Scheme Expr
+--           | IExternFunction String Scheme
+-- newtype Program = Program [Item]
 
--- TODO(alnyan): I will merge TaggedExpr with Expr in the next commit, I promise
-data TaggedExprValue = TEIdent String
-                     | TECall TaggedExpr [TaggedExpr]
-                     | TEBlock [TaggedExpr]
-                     | TELet String TaggedExpr
-                     | TEIntLiteral Int
+data XExprValue t = XEIntLiteral Int
+                  | XEFloatLiteral Float
+                  | XEBoolLiteral Bool
+                  | XEIdent String
+                  | XECall (XExpr t) [XExpr t]
+                  | XEArray [XExpr t]
+                  | XEAs (XExpr t) Type
+                  | XEIf (XExpr t) (XExpr t) (Maybe (XExpr t))
+                  | XEBlock [XExpr t]
+                  | XELet String (Maybe Type) (XExpr t)
+                  | XEReturn (XExpr t)
+    deriving (Show, Eq)
+data XExpr t = XExpr t (XExprValue t)
+    deriving (Show, Eq)
+data XItem t = XIFunction String Scheme (XExpr t)
+             | XIExternFunction String Scheme
+    deriving (Show, Eq)
+newtype XProgram t = XProgram [XItem t]
     deriving (Show, Eq)
 
-type TaggedExpr = (Type, TaggedExprValue)
-data TaggedItem = TIFunction Scheme TaggedExpr
-    deriving Show
-type TaggedProgram = [TaggedItem]
+type TaggedExpr = XExpr Type
+type TaggedItem = XItem Type
+type TaggedProgram = XProgram Type
+
+type ExprValue = XExprValue ()
+type Expr = XExpr ()
+type Item = XItem ()
+type Program = XProgram ()
 
 -- Types
 -- TODO: struct/enum types
@@ -59,10 +75,10 @@ lhs :: Constraint -> Type
 lhs (Implements l _) = l
 
 data Qualified t = [Constraint] :=> t
-    deriving Show
+    deriving (Show, Eq)
 
 data Scheme = Scheme [TypeVar] (Qualified Type)
-    deriving Show
+    deriving (Show, Eq)
 
 ---- Errors enum
 data TypeError = UnifyError Type Type
@@ -105,3 +121,14 @@ isCoreFloat _ = False
 infixr 4 <:
 (<:) :: Type -> Type -> Constraint
 t1 <: t2 = Implements t1 t2
+
+
+-- AST construction helpers
+let_ name val = XExpr () $ XELet name Nothing val
+lint_ val = XExpr () $ XEIntLiteral val
+id_ name = XExpr () $ XEIdent name
+call_ f xs = XExpr () $ XECall f xs
+block_ xs = XExpr () $ XEBlock xs
+
+externFn_ = XIExternFunction
+fn_ = XIFunction

@@ -120,16 +120,19 @@ unconstrain ic u t = do let ic' = ic { subst = subst ic @@ (u +-> t) }
                           Just x -> error $ "Constraint check failed: " ++ show x
                           Nothing -> pure $ removeVar ic' u
 
-equateInner :: InferenceContext -> TaggedExpr -> Qualified Type -> Result TypeError (InferenceContext, TaggedExpr)
-equateInner ic (TVar u, x) (ps :=> TVar u') = do let ic' = replaceVar ic u u'
-                                                 pure (foldCtx' addConstraint ic' ps, (TVar u', x))
-equateInner ic (TVar u, x) ([] :=> t) = do ic' <- unconstrain ic u t
-                                           pure (ic', (apply (subst ic') t, x))
-equateInner ic (TConst tc1, x) ([] :=> TConst tc2) | tc1 == tc2 = Ok (ic, (TConst tc1, x))
+equateInner :: InferenceContext -> Type -> Qualified Type -> Result TypeError (InferenceContext, Type)
+equateInner ic (TVar u) (ps :=> TVar u') =
+    do let ic' = replaceVar ic u u'
+       pure (foldCtx' addConstraint ic' ps, TVar u')
+equateInner ic (TVar u) ([] :=> t) =
+    do ic' <- unconstrain ic u t
+       pure (ic', apply (subst ic') t)
+equateInner ic (TConst tc1) ([] :=> TConst tc2) | tc1 == tc2 = Ok (ic, TConst tc1)
 equateInner _ _ _ = undefined
 
 equate :: InferenceContext -> TaggedExpr -> Qualified Type -> Result TypeError (InferenceContext, TaggedExpr)
-equate ic (xt, x) qt = equateInner ic (apply s xt, x) (apply s qt)
+equate ic (XExpr t v) qt = do (ic', t') <- equateInner ic (apply s t) (apply s qt)
+                              pure (ic', XExpr t' (apply (subst ic') v))
     where s = subst ic
 
 qualify :: [Constraint] -> Type -> Qualified Type
@@ -152,48 +155,58 @@ inferCall ic fsch xs = do -- Instantiate a fresh call scheme fsch
                               pure (ic'', xs', apply (subst ic') ft)
 
 -- Inference
+inferExpr' :: InferenceContext -> ExprValue -> Result TypeError (InferenceContext, TaggedExpr)
+inferExpr' ic (XEBlock []) = Ok (ic, XExpr tUnit (XEBlock []))
+inferExpr' ic (XEBlock xs) =
+    do let (xs', x) = (init xs, last xs)
+       (ic', xs'') <- foldCtx inferExpr ic xs'
+       (ic'', xs''') <- foldCtx (\cx x' -> equate cx x' ([] :=> tUnit)) ic' xs''
+       (ic''', XExpr t x') <- inferExpr ic'' x
+       let txs = XEBlock $ xs''' ++ [XExpr t x']
+       pure (ic''', XExpr t txs)
+inferExpr' ic (XEIntLiteral val) =
+    let (ic', u) = allocVar ic in
+      pure (addConstraint ic' (TVar u <: TConst "Integer"), XExpr (TVar u) (XEIntLiteral val))
+inferExpr' ic (XELet name Nothing val) =
+    do (ic', XExpr t vt) <- inferExpr ic val
+       ic'' <- addVariable ic' name t
+       pure (ic'', XExpr tUnit (XELet name Nothing (XExpr t vt)))
+inferExpr' ic (XEIdent name) =
+    do t <- findVariable ic name
+       pure (ic, XExpr t (XEIdent name))
+inferExpr' ic (XECall (XExpr _ (XEIdent name)) xs) =
+    do fsch <- findFunction ic name
+       (ic', xs') <- foldCtx inferExpr ic xs
+       (ic'', xs'', t) <- inferCall ic' fsch xs'
+       pure (ic'', XExpr t (XECall (XExpr tUnit (XEIdent name)) xs''))
+inferExpr' _ x = error $ "TODO: infer expr: " ++ pprint x
+
 inferExpr :: InferenceContext -> Expr -> Result TypeError (InferenceContext, TaggedExpr)
-inferExpr ic (EBlock []) = Ok (ic, (tUnit, TEBlock []))
-inferExpr ic (EBlock xs) = do let (xs', x) = (init xs, last xs)
-                              (ic', xs'') <- foldCtx inferExpr ic xs'
-                              (ic'', xs''') <- foldCtx (\cx x' -> equate cx x' ([] :=> tUnit)) ic' xs''
-                              (ic''', (t, x')) <- inferExpr ic'' x
-                              let txs = TEBlock $ xs''' ++ [(t, x')]
-                              pure (ic''', (t, txs))
-inferExpr ic (EIntLiteral val) = let (ic', u) = allocVar ic in
-                                     pure (addConstraint ic' (TVar u <: TConst "Integer"), (TVar u, TEIntLiteral val))
-inferExpr ic (ELet name Nothing val) = do (ic', (t, vt)) <- inferExpr ic val
-                                          ic'' <- addVariable ic' name t
-                                          pure (ic'', (tUnit, TELet name (t, vt)))
-inferExpr ic (EIdent name) = do t <- findVariable ic name
-                                pure (ic, (t, TEIdent name))
-inferExpr ic (ECall (EIdent name) xs) = do fsch <- findFunction ic name
-                                           (ic', xs') <- foldCtx inferExpr ic xs
-                                           (ic'', xs'', t) <- inferCall ic' fsch xs'
-                                           pure (ic'', (t, TECall (tUnit, TEIdent name) xs''))
-inferExpr _ x = error $ "TODO: infer expr: " ++ pprint x
+inferExpr ic (XExpr _ x) = inferExpr' ic x
 
 --- Top-level stuff
 checkItem :: TypeContext -> Item -> Result TypeError (TypeContext, Maybe TaggedItem)
-checkItem tc (IExternFunction _ _) = Ok (tc, Nothing)
+checkItem tc (XIExternFunction _ _) = Ok (tc, Nothing)
 -- TODO use function's scheme and arguments to introduce local types/variables
-checkItem tc (IFunction _ (Scheme us (ps :=> TFunction xs fty)) body) = do (ic, body') <- inferExpr (emptyInferContext tc) body
-                                                                           (ic', (t, res)) <- equate ic body' (qualify ps fty)
-                                                                           -- TODO check that res doesn't have any unresolved variables left
-                                                                           --       (i.e. variables that still exist in the tree and aren't present in us)
-                                                                           -- TODO check ic' remaining constraints against function scheme
-                                                                           let res' = applyAll (subst ic') res
-                                                                           pure (tc, Just (TIFunction (Scheme us (ps :=> TFunction xs fty)) (t, res')))
+checkItem tc (XIFunction name (Scheme us (ps :=> TFunction xs fty)) body) =
+    do (ic, body') <- inferExpr (emptyInferContext tc) body
+       (ic', XExpr t res) <- equate ic body' (qualify ps fty)
+       -- TODO check that res doesn't have any unresolved variables left
+       --       (i.e. variables that still exist in the tree and aren't present in us)
+       -- TODO check ic' remaining constraints against function scheme
+       let res' = applyAll (subst ic') res
+       pure (tc, Just (XIFunction name (Scheme us (ps :=> TFunction xs fty)) (XExpr t res')))
 checkItem _ _ = undefined
 
 extractItem :: TypeContext -> Item -> Result TypeError TypeContext
-extractItem tc (IFunction name sch _) = addFunctionScheme tc name sch
-extractItem tc (IExternFunction name sch) = addFunctionScheme tc name sch
+extractItem tc (XIFunction name sch _) = addFunctionScheme tc name sch
+extractItem tc (XIExternFunction name sch) = addFunctionScheme tc name sch
 
 checkProgram :: TypeContext -> Program -> Result TypeError (TypeContext, TaggedProgram)
-checkProgram tc (Program is) = do tc' <- foldM extractItem tc is
-                                  (tc'', is') <- foldCtx checkItem tc' is
-                                  pure (tc'', catMaybes is')
+checkProgram tc (XProgram is) =
+    do tc' <- foldM extractItem tc is
+       (tc'', is') <- foldCtx checkItem tc' is
+       pure (tc'', XProgram (catMaybes is'))
 
 -- Test program:
 -- extern fn<T: PartialEq> f1(x: T, y: T) -> T;
@@ -205,15 +218,15 @@ checkProgram tc (Program is) = do tc' <- foldM extractItem tc is
 --   z
 -- }
 dPartialEq = TConst "PartialEq"
-dExternFn1 = IExternFunction "f1" $ Scheme ["T"]
-    ([TVar "T" <: dPartialEq] :=> TFunction [TVar "T", TVar "T"] (TVar "T"))
+dT1 = TVar "T"
 
-dLetX = ELet "x" Nothing (EIntLiteral 1234)
-dLetY = ELet "y" Nothing (EIntLiteral 4321)
-dCallF1 = ECall (EIdent "f1") [EIdent "x", EIdent "x"]
-dLetZ = ELet "z" Nothing dCallF1
-dZ = EIdent "z"
--- dMainBlock = Block [ dLetX, dLetY, dLetZ ] (Just dZ)
-dFnMain = IFunction "main" (Scheme [] ([] :=> TFunction [] tI64)) $ EBlock [dLetX, dLetY, dLetZ, dZ]
+dExternFn1 = externFn_ "f1" $ Scheme ["T"] ([dT1 <: dPartialEq] :=> TFunction [dT1, dT1] dT1)
+dLetX = let_ "x" $ lint_ 1234
+dLetY = let_ "y" $ lint_ 4321
+dCallF1 = call_ (id_ "f1") [id_ "x", id_ "x"]
+dLetZ = let_ "z" dCallF1
+dZ = id_ "z"
 
-dProgram1 = Program [ dExternFn1, dFnMain ]
+dMainFn = fn_ "main" (Scheme [] ([] :=> TFunction [] tI64)) $ block_ [dLetX, dLetY, dLetZ, dZ]
+
+dProgram1 = XProgram [dExternFn1, dMainFn]

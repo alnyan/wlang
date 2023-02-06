@@ -63,16 +63,21 @@ instance Apply a => Apply (Qualified a) where
     apply s (ps :=> t) = apply s ps :=> apply s t
     ftv (ps :=> t) = nub (ftv t ++ concatMap ftv ps)
 
-applyTE :: Subst -> TaggedExpr -> TaggedExpr
-applyTE s (x, y) = (apply s x, apply s y)
+-- applyTE :: Subst -> TaggedExpr -> TaggedExpr
+-- applyTE s (XExpr t v) = XExpr (apply s x) (apply s y)
 
-instance Apply TaggedExprValue where
-    apply s (TEBlock xs) = TEBlock (map (applyTE s) xs)
-    apply s (TELet name (t, val)) = TELet name (apply s t, apply s val)
-    apply s (TECall (ct, callee) args) = TECall (ct, apply s callee) (map (applyTE s) args)
-    apply _ i = i
-    -- TODO
-    ftv _ = undefined
+instance (Apply t, Show t) => Apply (XExpr t) where
+    apply s (XExpr t v) = XExpr (apply s t) (apply s v)
+    ftv (XExpr t v) = nub (ftv t ++ ftv v)
+
+instance (Show t, Apply t) => Apply (XExprValue t) where
+    apply s (XELet n t v) = XELet n t (apply s v)
+    apply s (XECall f xs) = XECall (apply s f) (apply s xs)
+    apply s (XEBlock xs) = XEBlock (map (apply s) xs)
+    apply _ (XEIdent name) = XEIdent name
+    apply _ (XEIntLiteral v) = XEIntLiteral v
+    apply _ x = error $ "TODO: " ++ show x
+    ftv = undefined
 
 applyAll :: (Apply t, Eq t) => Subst -> t -> t
 applyAll = loop

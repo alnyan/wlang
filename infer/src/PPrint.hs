@@ -36,44 +36,39 @@ instance PrettyPrint t => PrettyPrint (Qualified t) where
     pprint (ps :=> t) = pprint t ++ " where " ++ pprintCommad ps
 
 -- Expression/statement/item pprint
-instance PrettyPrint Expr where
-    pprint (EIdent name) = name
-    pprint (ECall f xs) = pprint f ++ "(" ++ pprintCommad xs ++ ")"
-    pprint (EIntLiteral v) = show v
-    pprint (ELet name (Just ty) val) = "let " ++ name ++ ": " ++ pprint ty ++ " = " ++ pprint val
-    pprint (ELet name Nothing val) = "let " ++ name ++ " = " ++ pprint val
-    pprint (EBlock xs) = "{\n" ++ pprintDelimited ";\n" xs ++ "\n}"
-    pprint _ = undefined
+instance (PrettyPrint t) => PrettyPrint (XExprValue t) where
+    pprint (XELet name Nothing val) = "let " ++ name ++ " = " ++ pprint val
+    pprint (XELet name (Just t) val) = "let " ++ name ++ ": " ++ pprint t ++ " = " ++ pprint val
+    pprint (XEIdent name) = name
+    pprint (XEBlock xs) = "{\n" ++ intercalate ";\n" (map pprint xs) ++ "\n}"
+    pprint (XEIntLiteral val) = show val
+    pprint (XEFloatLiteral val) = show val
+    pprint (XEBoolLiteral val) = show val
+    pprint (XECall f xs) = pprint f ++ "(" ++ intercalate ", " (map pprint xs) ++ ")"
+    pprint (XEArray xs) = "[" ++ intercalate ", " (map pprint xs) ++ "]"
+    pprint (XEAs x t) = pprint x ++ " as " ++ pprint t
+    pprint (XEIf x y Nothing) = "if " ++ pprint x ++ " " ++ pprint y
+    pprint (XEIf x y (Just z)) = "if " ++ pprint x ++ " " ++ pprint y ++ " else " ++ pprint z
+    pprint (XEReturn val) = "return " ++ pprint val
 
-instance PrettyPrint Item where
-    pprint (IExternFunction name scheme) = "extern " ++ name ++ ": " ++ pprint scheme ++ ";"
-    pprint (IFunction name scheme body) = name ++ ": " ++ pprint scheme ++ "\n" ++ pprint body
+instance (PrettyPrint t) => PrettyPrint (XExpr t) where
+    pprint (XExpr t v) | pt == "" = pprint v
+                       | otherwise = "(" ++ pprint v ++ " # " ++ pprint t ++ ")"
+        where pt = pprint t
 
-instance PrettyPrint Program where
-    pprint (Program is) = pprintDelimited "\n" is ++ "\n"
+instance (PrettyPrint t) => PrettyPrint (XItem t) where
+    pprint (XIFunction name sch body) = name ++ ": " ++ pprint sch ++ " = " ++ pprint body
+    pprint (XIExternFunction name sch) = "extern " ++ name ++ ": " ++ pprint sch
+
+instance (PrettyPrint t) => PrettyPrint (XProgram t) where
+    pprint (XProgram is) = intercalate ";\n" $ map pprint is
+
+instance PrettyPrint () where
+    pprint _ = ""
 
 instance PrettyPrint (TypeVar, Type) where
     pprint (u, t) = u ++ " +-> " ++ pprint t
 
--- instance (PrettyPrint e, PrettyPrint t) => PrettyPrint (Result e t) where
---     pprint (Ok t) = "Ok (" ++ pprint t ++ ")"
---     pprint (Err e) = "Err (" ++ pprint e ++ ")"
-
 instance (Show e, PrettyPrint t) => PrettyPrint (Result e t) where
     pprint (Ok t) = "Ok (" ++ pprint t ++ ")"
     pprint (Err e) = "Err (" ++ show e ++ ")"
-
-pprintTE :: TaggedExpr -> String
-pprintTE (t, x) = pprint x ++ ": " ++ pprint t
-parens :: String -> String
-parens x = "(" ++ x ++ ")"
-
-instance PrettyPrint TaggedExprValue where
-    pprint (TEBlock xs) = "{\n" ++ intercalate ";\n" (map pprintTE xs) ++ "\n}"
-    pprint (TELet name (t, val)) = "let " ++ name ++ ": " ++ pprint t ++ " = " ++ pprint val
-    pprint (TEIntLiteral i) = show i
-    pprint (TEIdent name) = name
-    pprint (TECall (_, callee) args) = pprint callee ++ "(" ++ intercalate ", " (map pprintTE args) ++ ")"
-
-instance PrettyPrint TaggedItem where
-    pprint (TIFunction s (_, x)) = pprint s ++ " " ++ pprint x
