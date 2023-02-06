@@ -20,6 +20,19 @@ data Item = IFunction String Scheme Expr
           | IExternFunction String Scheme
 newtype Program = Program [Item]
 
+-- TODO(alnyan): I will merge TaggedExpr with Expr in the next commit, I promise
+data TaggedExprValue = TEIdent String
+                     | TECall TaggedExpr [TaggedExpr]
+                     | TEBlock [TaggedExpr]
+                     | TELet String TaggedExpr
+                     | TEIntLiteral Int
+    deriving (Show, Eq)
+
+type TaggedExpr = (Type, TaggedExprValue)
+data TaggedItem = TIFunction Scheme TaggedExpr
+    deriving Show
+type TaggedProgram = [TaggedItem]
+
 -- Types
 -- TODO: struct/enum types
 -- TODO: references
@@ -41,6 +54,9 @@ type Subst = [(TypeVar, Type)]
 -- Constraints
 data Constraint = Implements Type Type
     deriving (Show, Eq)
+
+lhs :: Constraint -> Type
+lhs (Implements l _) = l
 
 data Qualified t = [Constraint] :=> t
     deriving Show

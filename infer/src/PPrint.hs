@@ -2,8 +2,9 @@
 
 module PPrint where
 
-import Data.List (intercalate, concatMap)
+import Data.List (intercalate)
 import Types.Data
+import Result
 
 ---- Pretty printing helper
 class PrettyPrint a where
@@ -53,3 +54,26 @@ instance PrettyPrint Program where
 
 instance PrettyPrint (TypeVar, Type) where
     pprint (u, t) = u ++ " +-> " ++ pprint t
+
+-- instance (PrettyPrint e, PrettyPrint t) => PrettyPrint (Result e t) where
+--     pprint (Ok t) = "Ok (" ++ pprint t ++ ")"
+--     pprint (Err e) = "Err (" ++ pprint e ++ ")"
+
+instance (Show e, PrettyPrint t) => PrettyPrint (Result e t) where
+    pprint (Ok t) = "Ok (" ++ pprint t ++ ")"
+    pprint (Err e) = "Err (" ++ show e ++ ")"
+
+pprintTE :: TaggedExpr -> String
+pprintTE (t, x) = pprint x ++ ": " ++ pprint t
+parens :: String -> String
+parens x = "(" ++ x ++ ")"
+
+instance PrettyPrint TaggedExprValue where
+    pprint (TEBlock xs) = "{\n" ++ intercalate ";\n" (map pprintTE xs) ++ "\n}"
+    pprint (TELet name (t, val)) = "let " ++ name ++ ": " ++ pprint t ++ " = " ++ pprint val
+    pprint (TEIntLiteral i) = show i
+    pprint (TEIdent name) = name
+    pprint (TECall (_, callee) args) = pprint callee ++ "(" ++ intercalate ", " (map pprintTE args) ++ ")"
+
+instance PrettyPrint TaggedItem where
+    pprint (TIFunction s (_, x)) = pprint s ++ " " ++ pprint x

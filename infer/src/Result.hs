@@ -23,3 +23,11 @@ class IntoResult m where
 instance IntoResult Maybe where
     okOr (Just a) _ = Ok a
     okOr Nothing e = Err e
+
+isErr :: Result e t -> Bool
+isErr (Ok _) = False
+isErr (Err _) = True
+
+unwrap :: Show e => Result e t -> t
+unwrap (Ok x) = x
+unwrap (Err e) = error $ "Unwrap: " ++ show e

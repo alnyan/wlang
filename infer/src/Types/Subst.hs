@@ -62,3 +62,19 @@ instance Apply Constraint where
 instance Apply a => Apply (Qualified a) where
     apply s (ps :=> t) = apply s ps :=> apply s t
     ftv (ps :=> t) = nub (ftv t ++ concatMap ftv ps)
+
+applyTE :: Subst -> TaggedExpr -> TaggedExpr
+applyTE s (x, y) = (apply s x, apply s y)
+
+instance Apply TaggedExprValue where
+    apply s (TEBlock xs) = TEBlock (map (applyTE s) xs)
+    apply s (TELet name (t, val)) = TELet name (apply s t, apply s val)
+    apply s (TECall (ct, callee) args) = TECall (ct, apply s callee) (map (applyTE s) args)
+    apply _ i = i
+    -- TODO
+    ftv _ = undefined
+
+applyAll :: (Apply t, Eq t) => Subst -> t -> t
+applyAll = loop
+    where loop s t | apply s t == t = t
+                   | otherwise = loop s (apply s t)
