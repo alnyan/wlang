@@ -1,5 +1,36 @@
 module Types.Infer where
 
+-- How this stuff works (simplified, not backed by any theory, lol)
+--
+-- Algorithm entry point: checkProgram
+-- 1. Extract every top-level item (fn defs inside other fn's are expected
+--      to be lifted to top level prior to this step)
+-- 2. Using that info, runs inferExpr on each function body
+-- 2.. For each function also checks that `typeof body` == function return type
+--
+-- Expression inference tries to synthesize a type for each input expression and
+--      attach it as a tag into a newly-formed TaggedExpr tree
+--
+-- If at any point there is a requirement that some T1 == T2, be it an inferred or a
+--      constant type, `equate t1 t2` is ran to find a substitution which will
+--      (hopefully) solve that constraint in-place. This can happen when:
+--      1. Trying to pass inferred-/known-typed values to a function
+--      2. For non-terminal expressions in block expressions (which have to be
+--          statements, i.e. -> (), themselves)
+--
+-- (ps is constraint/predicate list, T/U/V is a constant type, u,u' is a variable type,
+--      t is "any type")
+-- For equate fn, there are several possible pairs of relations:
+-- * (ps :=> u) == T -- Here, T is checked against u's constraints, if all apply, then we're good
+-- * T == (ps :=> u) -- Ditto
+-- * (ps :=> u) == (ps' :=> u') -- ps and ps' are merged and u is substituted with u'
+-- * T == U -- just check that they are the same type
+--
+-- For the result (ps' :=> t') of equate application, we try to "lift" as many constraints as
+--      possible in current context. E.g. if we managed to transform [u <: Integer] :=> u
+--      into [i64 <: Integer] :=> i64, we can immediately lift the i64 <: Integer constraint,
+--      because all the types are known at this point.
+
 import PPrint
 import Types.Data
 import Types.Context
