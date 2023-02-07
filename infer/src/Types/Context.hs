@@ -53,31 +53,29 @@ checkConstraints tc ps = case find isErr (map (checkConstraint tc) ps) of
                            Nothing -> Ok ()
 
 data InferenceContext = InferenceContext { tcx :: TypeContext,
-                                           vars :: [(String, Type)],
+                                           vars :: [(String, Qualified Type)],
                                            lastVarId :: Int,
-                                           cs :: [Constraint],
                                            subst :: Subst }
     deriving Show
 
 emptyInferContext tc = InferenceContext { tcx = tc,
                                           lastVarId = 0,
-                                          cs = [],
                                           vars = [],
                                           subst = nullSubst }
 
-addVariable :: InferenceContext -> String -> Type -> Result TypeError InferenceContext
+addVariable :: InferenceContext -> String -> Qualified Type -> Result TypeError InferenceContext
 addVariable ic name ty | isJust (lookup name vs) = undefined
                        | otherwise = Ok $ ic{ vars = vs ++ [(name, ty)] }
                        where vs = vars ic
 
-addConstraint :: InferenceContext -> Constraint -> InferenceContext
-addConstraint ic q | q `elem` cs ic = ic
-                   | otherwise = ic { cs = q:cs ic }
-
+-- addConstraint :: InferenceContext -> Constraint -> InferenceContext
+-- addConstraint ic q | q `elem` cs ic = ic
+--                    | otherwise = ic { cs = q:cs ic }
+--
 findFunction :: InferenceContext -> String -> Result TypeError Scheme
 findFunction ic = getFunctionScheme (tcx ic)
 
-findVariable :: InferenceContext -> String -> Result TypeError Type
+findVariable :: InferenceContext -> String -> Result TypeError (Qualified Type)
 findVariable ic name = okOr v $ UndefinedVariable name
     where v = lookup name (vars ic)
 
@@ -85,15 +83,15 @@ allocVar :: InferenceContext -> (InferenceContext, TypeVar)
 allocVar ic = (ic { lastVarId = vi }, "v" ++ show vi)
     where vi = lastVarId ic + 1
 
-replaceVar' :: TypeVar -> TypeVar -> Constraint -> Constraint
-replaceVar' u u' (Implements (TVar u'') t) | u == u'' = Implements (TVar u') t
-replaceVar' _ _ c = c
+-- replaceVar' :: TypeVar -> TypeVar -> Constraint -> Constraint
+-- replaceVar' u u' (Implements (TVar u'') t) | u == u'' = Implements (TVar u') t
+-- replaceVar' _ _ c = c
 
-replaceVar :: InferenceContext -> TypeVar -> TypeVar -> InferenceContext
-replaceVar ic u u' = ic { cs = nub (map (replaceVar' u u') (cs ic)), subst = subst ic @@ (u +-> TVar u') }
+-- replaceVar :: InferenceContext -> TypeVar -> TypeVar -> InferenceContext
+-- replaceVar ic u u' = ic { cs = nub (map (replaceVar' u u') (cs ic)), subst = subst ic @@ (u +-> TVar u') }
 
-removeVar :: InferenceContext -> TypeVar -> InferenceContext
-removeVar ic u = ic { cs = filter ((== TVar u) . lhs) (cs ic) }
+-- removeVar :: InferenceContext -> TypeVar -> InferenceContext
+-- removeVar ic u = ic { cs = filter ((== TVar u) . lhs) (cs ic) }
 
 foldCtx :: (c -> t -> Result e (c, u)) -> c -> [t] -> Result e (c, [u])
 foldCtx = loop []
@@ -109,13 +107,16 @@ foldCtx' = loop
 projectConstraints :: TypeVar -> [Constraint] -> Type -> [Constraint]
 projectConstraints u ps t = apply (u +-> t) ps
 
-constraints :: InferenceContext -> TypeVar -> [Constraint]
-constraints ic u = filter ((== TVar u) . lhs) (cs ic)
+addSubst :: InferenceContext -> Subst -> InferenceContext
+addSubst ic s = ic { subst = s @@ subst ic }
 
-unconstrain :: InferenceContext -> TypeVar -> Type -> Result TypeError InferenceContext
-unconstrain ic u t = do let ic' = ic { subst = subst ic @@ (u +-> t) }
-                        let ps = apply (subst ic') (constraints ic' u)
-                        case find isErr $ map (checkConstraint (tcx ic')) ps of
-                          Just x -> error $ "Constraint check failed: " ++ show x
-                          Nothing -> pure $ removeVar ic' u
-
+-- constraints :: InferenceContext -> TypeVar -> [Constraint]
+-- constraints ic u = filter ((== TVar u) . lhs) (cs ic)
+--
+-- unconstrain :: InferenceContext -> TypeVar -> Type -> Result TypeError InferenceContext
+-- unconstrain ic u t = do let ic' = ic { subst = subst ic @@ (u +-> t) }
+--                         let ps = apply (subst ic') (constraints ic' u)
+--                         case find isErr $ map (checkConstraint (tcx ic')) ps of
+--                           Just x -> error $ "Constraint check failed: " ++ show x
+--                           Nothing -> pure $ removeVar ic' u
+--

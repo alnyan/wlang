@@ -40,9 +40,9 @@ data XItem t = XIFunction String Scheme (XExpr t)
 newtype XProgram t = XProgram [XItem t]
     deriving (Show, Eq)
 
-type TaggedExpr = XExpr Type
-type TaggedItem = XItem Type
-type TaggedProgram = XProgram Type
+type TaggedExpr = XExpr (Qualified Type)
+type TaggedItem = XItem (Qualified Type)
+type TaggedProgram = XProgram (Qualified Type)
 
 type ExprValue = XExprValue ()
 type Expr = XExpr ()
@@ -73,6 +73,9 @@ data Constraint = Implements Type Type
 
 lhs :: Constraint -> Type
 lhs (Implements l _) = l
+
+rhs :: Constraint -> Type
+rhs (Implements _ r) = r
 
 data Qualified t = [Constraint] :=> t
     deriving (Show, Eq)
