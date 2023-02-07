@@ -74,6 +74,7 @@ instance (Show t, Apply t) => Apply (XExprValue t) where
     apply s (XELet n t v) = XELet n t (apply s v)
     apply s (XECall f xs) = XECall (apply s f) (apply s xs)
     apply s (XEBlock xs) = XEBlock (map (apply s) xs)
+    apply s (XEAs v t) = XEAs (apply s v) (apply s t)
     apply _ (XEIdent name) = XEIdent name
     apply _ (XEIntLiteral v) = XEIntLiteral v
     apply _ x = error $ "TODO: " ++ show x

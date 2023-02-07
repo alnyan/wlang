@@ -90,6 +90,7 @@ data TypeError = UnifyError Type Type
                | MergeError Subst Subst
                | UndefinedVariable String
                | UndefinedFunction String
+               | EquateError Type (Qualified Type)
     deriving (Show, Eq)
 
 ---- Constants
@@ -125,8 +126,10 @@ t1 <: t2 = Implements t1 t2
 
 -- AST construction helpers
 let_ name val = XExpr () $ XELet name Nothing val
+letv_ name t val = XExpr () $ XELet name (Just t) val
 lint_ val = XExpr () $ XEIntLiteral val
 id_ name = XExpr () $ XEIdent name
+as_ val ty = XExpr () $ XEAs val ty
 call_ f xs = XExpr () $ XECall f xs
 block_ xs = XExpr () $ XEBlock xs
 

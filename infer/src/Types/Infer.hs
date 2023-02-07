@@ -56,6 +56,11 @@ checkConstraint :: TypeContext -> Constraint -> Result TypeError ()
 checkConstraint tc p | p `elem` impls tc = Ok ()
                      | otherwise = error $ "Unsatisfied constraint: " ++ pprint p
 
+checkConstraints :: TypeContext -> [Constraint] -> Result TypeError ()
+checkConstraints tc ps = case find isErr (map (checkConstraint tc) ps) of
+                           Just e -> e
+                           Nothing -> Ok ()
+
 data InferenceContext = InferenceContext { tcx :: TypeContext,
                                            vars :: [(String, Type)],
                                            lastVarId :: Int,
@@ -110,6 +115,9 @@ foldCtx' = loop
     where loop _ tc [] = tc
           loop f tc (x:xs) = loop f (f tc x) xs
 
+projectConstraints :: TypeVar -> [Constraint] -> Type -> [Constraint]
+projectConstraints u ps t = apply (u +-> t) ps
+
 constraints :: InferenceContext -> TypeVar -> [Constraint]
 constraints ic u = filter ((== TVar u) . lhs) (cs ic)
 
@@ -120,6 +128,30 @@ unconstrain ic u t = do let ic' = ic { subst = subst ic @@ (u +-> t) }
                           Just x -> error $ "Constraint check failed: " ++ show x
                           Nothing -> pure $ removeVar ic' u
 
+intTypeNames = ["i64", "i32", "i16", "i8", "u64", "u32", "u16", "u8"]
+floatTypeNames = ["f64", "f32"]
+
+isIntOrFloat :: Id -> Bool
+isIntOrFloat t = t `elem` intTypeNames || t `elem` floatTypeNames
+
+isCastable :: Id -> Id -> Bool
+isCastable t "char" = t `elem` intTypeNames
+isCastable "char" t = t `elem` intTypeNames
+isCastable t1 t2
+  | t1 == t2 = True
+  | isIntOrFloat t1 && isIntOrFloat t2 = True
+  | otherwise = False
+
+checkCast :: InferenceContext -> Type -> Type -> Result TypeError ()
+checkCast ic (TVar u) t = do
+    let ps = constraints ic u
+    let ps' = projectConstraints u ps t
+    checkConstraints (tcx ic) ps'
+
+checkCast _ (TConst tc1) (TConst tc2)
+  | isCastable tc1 tc2 = Ok ()
+checkCast _ t1 t2 = error $ "TODO: cast " ++ pprint t1 ++ " to " ++ pprint t2
+
 equateInner :: InferenceContext -> Type -> Qualified Type -> Result TypeError (InferenceContext, Type)
 equateInner ic (TVar u) (ps :=> TVar u') =
     do let ic' = replaceVar ic u u'
@@ -127,8 +159,14 @@ equateInner ic (TVar u) (ps :=> TVar u') =
 equateInner ic (TVar u) ([] :=> t) =
     do ic' <- unconstrain ic u t
        pure (ic', apply (subst ic') t)
+equateInner ic (TConst tc1) (ps :=> TVar u) =
+    do let ps' = nub (ps ++ constraints ic u)
+       let ps'' = projectConstraints u ps' (TConst tc1)
+       case checkConstraints (tcx ic) ps'' of
+         Ok _ -> equateInner ic (TVar u) ([] :=> TConst tc1)
+         Err e -> Err e
 equateInner ic (TConst tc1) ([] :=> TConst tc2) | tc1 == tc2 = Ok (ic, TConst tc1)
-equateInner _ _ _ = undefined
+equateInner _ t1 t2 = Err $ EquateError t1 t2
 
 equate :: InferenceContext -> TaggedExpr -> Qualified Type -> Result TypeError (InferenceContext, TaggedExpr)
 equate ic (XExpr t v) qt = do (ic', t') <- equateInner ic (apply s t) (apply s qt)
@@ -171,6 +209,11 @@ inferExpr' ic (XELet name Nothing val) =
     do (ic', XExpr t vt) <- inferExpr ic val
        ic'' <- addVariable ic' name t
        pure (ic'', XExpr tUnit (XELet name Nothing (XExpr t vt)))
+inferExpr' ic (XELet name (Just ty) val) =
+    do (ic', val') <- inferExpr ic val
+       (ic'', XExpr t vt) <- equate ic' val' ([] :=> ty)
+       ic''' <- addVariable ic'' name t
+       pure (ic''', XExpr tUnit (XELet name (Just ty) (XExpr t vt)))
 inferExpr' ic (XEIdent name) =
     do t <- findVariable ic name
        pure (ic, XExpr t (XEIdent name))
@@ -179,6 +222,11 @@ inferExpr' ic (XECall (XExpr _ (XEIdent name)) xs) =
        (ic', xs') <- foldCtx inferExpr ic xs
        (ic'', xs'', t) <- inferCall ic' fsch xs'
        pure (ic'', XExpr t (XECall (XExpr tUnit (XEIdent name)) xs''))
+inferExpr' ic (XEAs val ty) =
+    do (ic', XExpr t x) <- inferExpr ic val
+       case checkCast ic' t ty of
+         Ok _ -> pure (ic', XExpr ty (XEAs (XExpr t x) ty))
+         Err e -> Err e
 inferExpr' _ x = error $ "TODO: infer expr: " ++ pprint x
 
 inferExpr :: InferenceContext -> Expr -> Result TypeError (InferenceContext, TaggedExpr)
@@ -222,11 +270,13 @@ dT1 = TVar "T"
 
 dExternFn1 = externFn_ "f1" $ Scheme ["T"] ([dT1 <: dPartialEq] :=> TFunction [dT1, dT1] dT1)
 dLetX = let_ "x" $ lint_ 1234
-dLetY = let_ "y" $ lint_ 4321
-dCallF1 = call_ (id_ "f1") [id_ "x", id_ "x"]
+dLetY = letv_ "y" tI32 $ lint_ 4321
+dLetV = let_ "v" $ as_ (lint_ 1) tI32
+dCallF1 = call_ (id_ "f1") [id_ "x", as_ (id_ "y") tI64]
 dLetZ = let_ "z" dCallF1
+-- dLetZ = let_ "z" (id_ "x")
 dZ = id_ "z"
 
-dMainFn = fn_ "main" (Scheme [] ([] :=> TFunction [] tI64)) $ block_ [dLetX, dLetY, dLetZ, dZ]
+dMainFn = fn_ "main" (Scheme [] ([] :=> TFunction [] tI64)) $ block_ [dLetX, dLetY, dLetV, dLetZ, dZ]
 
 dProgram1 = XProgram [dExternFn1, dMainFn]
